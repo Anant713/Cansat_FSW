@@ -1,51 +1,28 @@
 #pragma once
-#include <stdint.h>
-#include <stdbool.h>
+#include "apps/Cansat.h"
 
-/* Forward declaration */
-typedef struct Cansat Cansat;
+#define STATE_LAUNCH_HEIGHT_M 30.0f
+#define STATE_DESCENT_ARM_HEIGHT_M 800.0f
+#define STATE_DESCENT_DROP_M 2.0f
+#define STATE_DESCENT_WINDOW_MS 5000U
+#define STATE_PARAFOIL_HEIGHT_M 600.0f
+#define STATE_TOUCHDOWN_HEIGHT_M 20.0f
+#define STATE_HDRM_PULSE_MS 2000U
+#define STATE_ALTITUDE_MAX_AGE_MS 1000U
 
+typedef struct {
+    bool recovered;
+    bool persistenceOK;
+    bool crossedArmHeight;
+    bool hdrmActive;
+    bool deploymentComplete;
+    bool reactionWheelRequested; /* Driver integration pending; not hardware feedback. */
+} StateMachineStatus;
 
-/* Mission states */
-
-typedef enum
-{
-    STATE_LAUNCH_PAD = 0,
-    STATE_ASCENT,
-    STATE_DESCENT_1,
-    STATE_DESCENT_2,
-    STATE_TOUCHDOWN
-} MissionState;
-
-
-/* Initialization */
-
-void StateMachine_Init(Cansat *cansat);
-
-
-/* Called periodically from main loop */
-
+bool StateMachine_Init(Cansat *cansat);
 void StateMachine_Update(Cansat *cansat);
-
-
-/* State transition */
-
-void StateMachine_Transition(Cansat *cansat,
-                             MissionState newState);
-
-
-/* Entry/exit handling */
-
-void StateMachine_Enter(Cansat *cansat,
-                        MissionState state);
-
-void StateMachine_Exit(Cansat *cansat,
-                       MissionState state);
-
-
-/* Optional query functions */
-
-MissionState StateMachine_GetState(const Cansat *cansat);
-
-bool StateMachine_IsState(const Cansat *cansat,
-                          MissionState state);
+const StateMachineStatus *StateMachine_GetStatus(void);
+/* Explicit ground-only new-flight operation. Never called automatically at boot. */
+bool StateMachine_BeginNewMission(Cansat *cansat);
+/* Called once by altitude estimation on a fresh launch-pad mission. */
+bool StateMachine_SetGroundPressure(Cansat *cansat, float pressurePa);

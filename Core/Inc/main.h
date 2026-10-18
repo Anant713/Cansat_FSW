@@ -63,6 +63,14 @@ void Error_Handler(void);
 #define Xbee_Reset_GPIO_Port GPIOA
 #define Wake_Sleep_XBee_Pin GPIO_PIN_3
 #define Wake_Sleep_XBee_GPIO_Port GPIOA
+#define BMI_INT1_Pin GPIO_PIN_4
+#define BMI_INT1_GPIO_Port GPIOC
+#define BMI_INT2_Pin GPIO_PIN_5
+#define BMI_INT2_GPIO_Port GPIOC
+#define CS_Pin GPIO_PIN_2
+#define CS_GPIO_Port GPIOB
+#define IIS2MDC_INT_Pin GPIO_PIN_15
+#define IIS2MDC_INT_GPIO_Port GPIOB
 #define HDRM_Switch_Pin GPIO_PIN_8
 #define HDRM_Switch_GPIO_Port GPIOA
 #define DVR_Control_Pin GPIO_PIN_9

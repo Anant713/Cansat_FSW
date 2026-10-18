@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "ff.h"
 
 typedef enum
 {
@@ -15,11 +16,19 @@ typedef enum
 bool SDCard_Init(void);
 
 bool SDCard_CreateFile(const char *filename);
+/* CreateFile refuses to overwrite. OpenAppend preserves an existing file. */
+bool SDCard_OpenAppend(const char *filename);
 
 bool SDCard_Write(const uint8_t *data,
                   uint32_t length);
 
 bool SDCard_WriteString(const char *data);
+bool SDCard_ReadFile(const char *filename, uint8_t *data, uint32_t capacity,
+                     uint32_t *bytes_read);
+bool SDCard_Sync(void);
+bool SDCard_CloseFile(void);
+bool SDCard_DeInit(void);
+FRESULT SDCard_GetLastResult(void);
 
 bool SDCard_IsReady(void);
 
@@ -28,10 +37,9 @@ bool SDCard_IsBusy(void);
 SDCardStatus SDCard_GetStatus(void);
 
 
-/* DMA completion event */
-
-void SDCard_DMACompleteCallback(void);
-
-void SDCard_DMAErrorCallback(void);
+/* All operations are blocking, single-caller and main/thread-context only.
+ * SPI DMA callbacks belong to sd_spi.c. DMA completion does not mean a file
+ * has been committed. Call Sync periodically and CloseFile before removal.
+ * A successful Write can still leave data in FatFs's sector cache. */
 
 #endif

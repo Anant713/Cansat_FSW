@@ -19,7 +19,46 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # Set the project name
-set(CMAKE_PROJECT_NAME Documents)
+set(CMAKE_PROJECT_NAME Documents) 
+# Yeah I know "Documents" is a wierd name for a project, wasn't intentional
+# STMCubeMX took that name for some reason and I didn't bother to change 
+
+# Select exactly one application entry point and its explicit dependencies.
+set(FIRMWARE_APP "flight" CACHE STRING "Firmware application to build")
+set_property(CACHE FIRMWARE_APP PROPERTY STRINGS flight test_template test_sd test_sensors test_gnss test_xbee test_camera)
+
+if(FIRMWARE_APP STREQUAL "flight")
+    set(FIRMWARE_SOURCES
+        Core/Src/apps/FlightApp.c
+        Core/Src/apps/Cansat.c
+        Core/Src/apps/SensorAcquisition.c
+        Core/Src/apps/Communication.c
+        Core/Src/apps/Telemetry.c
+        Core/Src/apps/Logging.c
+        Core/Src/apps/StateMachine.c
+        Core/Src/apps/BarometricAltitude.c
+        Core/Src/apps/CameraControl.c
+        Core/Src/drivers/MissionStore.c
+        Core/Src/drivers/MissionStore_HAL.c
+    )
+elseif(FIRMWARE_APP STREQUAL "test_template")
+    set(FIRMWARE_SOURCES
+        Tests/test_template.c
+    )
+elseif(FIRMWARE_APP STREQUAL "test_sd")
+    set(FIRMWARE_SOURCES Tests/test_sd.c)
+elseif(FIRMWARE_APP STREQUAL "test_sensors")
+    set(FIRMWARE_SOURCES Tests/test_sensors.c)
+elseif(FIRMWARE_APP STREQUAL "test_gnss")
+    set(FIRMWARE_SOURCES Tests/test_gnss.c)
+elseif(FIRMWARE_APP STREQUAL "test_xbee")
+    set(FIRMWARE_SOURCES Tests/test_xbee.c)
+elseif(FIRMWARE_APP STREQUAL "test_camera")
+    set(FIRMWARE_SOURCES Tests/test_camera.c Core/Src/apps/CameraControl.c)
+else()
+    message(FATAL_ERROR
+        "Unknown FIRMWARE_APP '${FIRMWARE_APP}'. Choose flight, test_template, test_sd, test_sensors, test_gnss or test_xbee.")
+endif()
 
 # Enable compile command to ease indexing with e.g. clangd
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
@@ -33,9 +72,17 @@ enable_language(C ASM)
 
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
+set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME "${FIRMWARE_APP}")
 
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
+
+# Console code, headers and float formatting belong to test firmware only.
+if(NOT FIRMWARE_APP STREQUAL "flight")
+    target_sources(${CMAKE_PROJECT_NAME} PRIVATE Tests/Console.c)
+    target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE Tests)
+    target_link_options(${CMAKE_PROJECT_NAME} PRIVATE -u _printf_float)
+endif()
 
 # Link directories setup
 target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
@@ -44,7 +91,24 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
-    # Add user sources here
+    ${FIRMWARE_SOURCES}
+    Core/Src/sd_spi.c
+    Core/Src/sd_diskio_spi.c
+    Core/Src/sd_functions.c
+    Core/Src/sd_benchmark.c
+    Core/Src/drivers/SDCard.c
+    Core/Src/drivers/Switches.c
+    Core/Src/drivers/Servo.c
+    Core/Src/drivers/Battery.c
+    Core/Src/drivers/SensorI2C.c
+    Core/Src/drivers/BMP.c
+    Core/Src/drivers/AHT20.c
+    Core/Src/drivers/bmi270.c
+    Core/Src/drivers/bmi270_config.c
+    Core/Src/drivers/IIS2MDC.c
+    Core/Src/drivers/GNSS.c
+    Core/Src/drivers/GNSS_HAL.c
+    Core/Src/drivers/XBee.c
 )
 
 # Add include paths

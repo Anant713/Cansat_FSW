@@ -2,11 +2,19 @@
     "version": 3,
     "configurePresets": [
         {
+            "name": "TestXBee",
+            "inherits": "default",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "FIRMWARE_APP": "test_xbee"
+            }
+        },
+        {
             "name": "default",
             "hidden": true,
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/build/${presetName}",
-		    "toolchainFile": "${sourceDir}/cmake/gcc-arm-none-eabi.cmake",
+            "toolchainFile": "${sourceDir}/cmake/gcc-arm-none-eabi.cmake",
             "cacheVariables": {
             }
         },
@@ -14,18 +22,76 @@
             "name": "Debug",
             "inherits": "default",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug"
+                "CMAKE_BUILD_TYPE": "Debug",
+                "FIRMWARE_APP": "flight"
             }
         },
         {
             "name": "Release",
             "inherits": "default",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release"
+                "CMAKE_BUILD_TYPE": "Release",
+                "FIRMWARE_APP": "flight"
+            }
+        },
+        {
+            "name": "TestSD",
+            "inherits": "default",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "FIRMWARE_APP": "test_sd"
+            }
+        },
+        {
+            "name": "TestTemplate",
+            "inherits": "default",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "FIRMWARE_APP": "test_template"
+            }
+        },
+        {
+            "name": "TestSensors",
+            "inherits": "default",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "FIRMWARE_APP": "test_sensors"
+            }
+        },
+        {
+            "name": "TestGNSS",
+            "inherits": "default",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "FIRMWARE_APP": "test_gnss"
+            }
+        },
+        {
+            "name": "TestCamera",
+            "inherits": "default",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "FIRMWARE_APP": "test_camera"
             }
         }
     ],
     "buildPresets": [
+        {
+            "name": "TestXBee",
+            "configurePreset": "TestXBee"
+        },
+        {
+            "name": "TestGNSS",
+            "configurePreset": "TestGNSS"
+        },
+        {
+            "name": "TestSensors",
+            "configurePreset": "TestSensors"
+        },
+        {
+            "name": "TestSD",
+            "configurePreset": "TestSD"
+        },
         {
             "name": "Debug",
             "configurePreset": "Debug"
@@ -33,6 +99,14 @@
         {
             "name": "Release",
             "configurePreset": "Release"
+        },
+        {
+            "name": "TestTemplate",
+            "configurePreset": "TestTemplate"
+        },
+        {
+            "name": "TestCamera",
+            "configurePreset": "TestCamera"
         }
     ]
 }

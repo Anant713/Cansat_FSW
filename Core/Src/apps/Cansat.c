@@ -1,23 +1,12 @@
 #include "apps/Cansat.h"
+#include <stddef.h>
 
-typedef struct
+void Cansat_Init(Cansat *cansat)
 {
-    SensorData sensors;
-
-    GNSSData gnss;
-
-    AttitudeData attitude;
-
-    NavigationData navigation;
-
-    BatteryData battery;
-
-    ActuatorState actuators;
-
-    SwitchState switches;
-
-    MissionState mission;
-
-    SystemStatus system;
-
-} Cansat;
+    if (cansat != NULL) {
+        *cansat = (Cansat){0};
+        const char teamId[] = CANSAT_DEFAULT_TEAM_ID;
+        _Static_assert(sizeof(teamId) <= sizeof(cansat->telemetry.teamId), "Team ID too long");
+        for (size_t i = 0; i < sizeof(teamId); ++i) cansat->telemetry.teamId[i] = teamId[i];
+    }
+}
