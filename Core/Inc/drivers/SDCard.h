@@ -38,8 +38,7 @@ SDCardStatus SDCard_GetStatus(void);
 
 
 /* All operations are blocking, single-caller and main/thread-context only.
- * SPI DMA callbacks belong to sd_spi.c. DMA completion does not mean a file
- * has been committed. Call Sync periodically and CloseFile before removal.
+ * SPI3 uses polling only. Call Sync periodically and CloseFile before removal.
  * A successful Write can still leave data in FatFs's sector cache. */
 
 #endif

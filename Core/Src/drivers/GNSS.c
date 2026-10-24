@@ -247,13 +247,20 @@ static bool gga(char **f, unsigned count, uint32_t tick)
 }
 static bool vtg(char **f, unsigned count, uint32_t tick)
 {
-    if (count < 9 || strcmp(f[2], "T") || strcmp(f[4], "M") ||
-        strcmp(f[6], "N") || strcmp(f[8], "K")) return false;
+    if (count < 9) return false;
     bool mode_valid = true;
     if (count > 9) {
         if (strlen(f[9]) != 1 || strchr("ADEN", *f[9]) == NULL) return false;
         mode_valid = *f[9] == 'A' || *f[9] == 'D';
     }
+    /* NEO-6 can emit $GPVTG,,,,,,,,,N*30 without a navigation solution.
+     * Accept that explicit unavailable report, but keep unit validation for
+     * populated sentences and never expose it as valid velocity. */
+    bool empty_no_fix = count == 10 && !strcmp(f[9], "N");
+    for (unsigned i = 1; i <= 8; ++i)
+        if (*f[i]) empty_no_fix = false;
+    if (!empty_no_fix && (strcmp(f[2], "T") || strcmp(f[4], "M") ||
+        strcmp(f[6], "N") || strcmp(f[8], "K"))) return false;
     float speed = 0, course = 0;
     bool speed_ok = false, course_ok = false;
     double v;

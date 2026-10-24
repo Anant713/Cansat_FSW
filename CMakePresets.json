@@ -1,6 +1,24 @@
 {
     "version": 3,
     "configurePresets": [
+        { "name": "TestServos", "inherits": "default", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "FIRMWARE_APP": "test_servos" } },
+        { "name": "TestSwitches", "inherits": "default", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "FIRMWARE_APP": "test_switches" } },
+        {
+            "name": "TestSDText",
+            "inherits": "default",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "FIRMWARE_APP": "test_sd_text"
+            }
+        },
+        {
+            "name": "TestSPI",
+            "inherits": "default",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "FIRMWARE_APP": "test_spi"
+            }
+        },
         {
             "name": "TestXBee",
             "inherits": "default",
@@ -76,6 +94,16 @@
         }
     ],
     "buildPresets": [
+        { "name": "TestServos", "configurePreset": "TestServos" },
+        { "name": "TestSwitches", "configurePreset": "TestSwitches" },
+        {
+            "name": "TestSDText",
+            "configurePreset": "TestSDText"
+        },
+        {
+            "name": "TestSPI",
+            "configurePreset": "TestSPI"
+        },
         {
             "name": "TestXBee",
             "configurePreset": "TestXBee"

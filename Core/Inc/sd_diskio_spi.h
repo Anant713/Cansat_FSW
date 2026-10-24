@@ -16,12 +16,13 @@
 #ifndef __SD_DISKIO_SPI_H__
 #define __SD_DISKIO_SPI_H__
 
-#include "ff_gen_drv.h"
+#include "diskio.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+#include "ff_gen_drv.h"
 extern const Diskio_drvTypeDef SD_Driver;
 DSTATUS SD_disk_status(BYTE drv);
 DSTATUS SD_disk_initialize(BYTE drv);

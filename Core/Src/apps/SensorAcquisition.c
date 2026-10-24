@@ -2,7 +2,7 @@
 #include "apps/Cansat.h"
 
 /* Match the address pins and the receiver's current baud rate on the board. */
-#define ACQUISITION_BMP_ADDRESS BMP280_ADDRESS_LOW
+#define ACQUISITION_BMP_ADDRESS BMP280_ADDRESS_HIGH // 
 #define ACQUISITION_BMI_ADDRESS BMI270_ADDRESS_LOW
 #define ACQUISITION_GNSS_BAUD 9600U
 #define HUMIDITY_PERIOD_MS 2000U

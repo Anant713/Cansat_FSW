@@ -9,7 +9,7 @@
 
 /* Flash this separate test application to check actual wiring and data.
  * Change the two selectable addresses to match your board's address pins. */
-#define TEST_BMP_ADDRESS BMP280_ADDRESS_LOW
+#define TEST_BMP_ADDRESS BMP280_ADDRESS_HIGH
 #define TEST_BMI_ADDRESS BMI270_ADDRESS_LOW
 extern I2C_HandleTypeDef hi2c2;
 
@@ -58,6 +58,14 @@ static void report(void)
             (double)sensor_aht_data.humidity, (unsigned long)sensor_aht_data.timestamp_ms,
             (unsigned long)sensor_sample_count[1]);
     else Console_Write("AHT20: no valid sample\r\n");
+    if (sensor_aht.frame_count != 0U)
+        Console_Printf("AHT20 frame=%02X %02X %02X %02X %02X %02X %02X CRC calc=%02X received=%02X frames=%lu crc_errors=%lu\r\n",
+            (unsigned)sensor_aht.frame[0], (unsigned)sensor_aht.frame[1],
+            (unsigned)sensor_aht.frame[2], (unsigned)sensor_aht.frame[3],
+            (unsigned)sensor_aht.frame[4], (unsigned)sensor_aht.frame[5],
+            (unsigned)sensor_aht.frame[6], (unsigned)sensor_aht.calculated_crc,
+            (unsigned)sensor_aht.frame[6], (unsigned long)sensor_aht.frame_count,
+            (unsigned long)sensor_aht.crc_errors);
     if (sensor_bmi_data.valid)
         Console_Printf("BMI270 accel XYZ=%.3f,%.3f,%.3f m/s^2 gyro XYZ=%.3f,%.3f,%.3f deg/s sample_ms=%lu count=%lu\r\n",
             (double)sensor_bmi_data.accelX, (double)sensor_bmi_data.accelY, (double)sensor_bmi_data.accelZ,

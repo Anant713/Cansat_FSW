@@ -50,9 +50,6 @@ RTC_HandleTypeDef hrtc;
 SPI_HandleTypeDef hspi3;
 DMA_HandleTypeDef hdma_spi3_rx;
 DMA_HandleTypeDef hdma_spi3_tx;
-DMA_HandleTypeDef hdma_usart6_rx;
-DMA_HandleTypeDef hdma_uart4_rx;
-DMA_HandleTypeDef hdma_uart4_tx;
 
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
@@ -60,6 +57,9 @@ TIM_HandleTypeDef htim4;
 UART_HandleTypeDef huart4;
 UART_HandleTypeDef huart3;
 UART_HandleTypeDef huart6;
+DMA_HandleTypeDef hdma_uart4_rx;
+DMA_HandleTypeDef hdma_uart4_tx;
+DMA_HandleTypeDef hdma_usart6_rx;
 
 /* USER CODE BEGIN PV */
 
@@ -134,7 +134,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    App_RunOnce();
+  App_RunOnce();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -432,6 +432,7 @@ static void MX_TIM4_Init(void)
 
   /* USER CODE END TIM4_Init 0 */
 
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
   TIM_OC_InitTypeDef sConfigOC = {0};
 
@@ -444,6 +445,15 @@ static void MX_TIM4_Init(void)
   htim4.Init.Period = 19999;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
   if (HAL_TIM_PWM_Init(&htim4) != HAL_OK)
   {
     Error_Handler();
@@ -586,15 +596,16 @@ static void MX_DMA_Init(void)
   /* DMA1_Stream0_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Stream0_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream0_IRQn);
-  /* Match UART4 priority: RX IDLE and DMA callbacks must not nest. */
+  /* DMA1_Stream2_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Stream2_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream2_IRQn);
+  /* DMA1_Stream4_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Stream4_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream4_IRQn);
   /* DMA1_Stream5_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Stream5_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream5_IRQn);
-  /* Same preemption priority as USART6: RX callbacks must not nest. */
+  /* DMA2_Stream1_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream1_IRQn);
 
@@ -620,27 +631,20 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(Xbee_Reset_GPIO_Port, Xbee_Reset_Pin, GPIO_PIN_SET);
-  HAL_GPIO_WritePin(GPIOA, HDRM_Switch_Pin|DVR_Control_Pin|DVR_Switch_Pin
-                          |Buzzer_Switch_Pin|LED_Switch_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(CS_GPIO_Port, CS_Pin, GPIO_PIN_SET);
 
-  /* XBee RESET is bidirectional at the module: open drain, normally released. */
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOA, HDRM_Switch_Pin|DVR_Control_Pin|DVR_Switch_Pin|Buzzer_Switch_Pin
+                          |LED_Switch_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : Xbee_Reset_Pin */
   GPIO_InitStruct.Pin = Xbee_Reset_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(Xbee_Reset_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : HDRM_Switch_Pin DVR_Control_Pin DVR_Switch_Pin
-                           Buzzer_Switch_Pin LED_Switch_Pin */
-  GPIO_InitStruct.Pin = HDRM_Switch_Pin|DVR_Control_Pin|DVR_Switch_Pin
-                          |Buzzer_Switch_Pin|LED_Switch_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pin : Wake_Sleep_XBee_Pin */
   GPIO_InitStruct.Pin = Wake_Sleep_XBee_Pin;
@@ -666,6 +670,15 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(IIS2MDC_INT_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : HDRM_Switch_Pin DVR_Control_Pin DVR_Switch_Pin Buzzer_Switch_Pin
+                           LED_Switch_Pin */
+  GPIO_InitStruct.Pin = HDRM_Switch_Pin|DVR_Control_Pin|DVR_Switch_Pin|Buzzer_Switch_Pin
+                          |LED_Switch_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 

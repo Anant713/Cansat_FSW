@@ -1,183 +1,161 @@
-# SD card driver integration
+# SD card driver: polling SPI3
 
-The project now uses this call chain:
+All SD operations are synchronous and use polling. There are no SD DMA
+callbacks, transfer launches or DMA buffers.
 
-```text
-Flight/test app
-  -> drivers/SDCard.c or sd_functions.c (file operations)
-  -> FatFs f_open/f_write/f_read/f_sync/f_close
-  -> CubeMX USER_Driver in FATFS/Target/user_diskio.c
-  -> SD_disk_* in sd_diskio_spi.c
-  -> SD_ReadBlocks/SD_WriteBlocks in sd_spi.c
-  -> SPI3 + DMA1
-```
+## Integration
 
-`sd_spi.c` already IS the SPI SD driver. Do not call FatFs or `sd_write_file()`
-from its low-level transfer functions: that would recurse back into the same
-driver. Use `SDCard.c` as the public driver facade for the flight application.
-The source files are included in the top-level CMake target for all presets.
+Application -> SDCard.c -> sd_mount/sd_unmount and FatFs file functions ->
+directly registered SD_Driver -> sd_diskio_spi.c -> supplied sd_spi.c -> HAL polling SPI3.
 
-## Wiring and CubeMX
+The supplied files were adapted for:
+- hspi3; PB2 CS, initially high and asserted low during transactions.
+- Initialization at <=400 kHz, then <=8 MHz, calculated from PCLK1. At
+  PCLK1=16 MHz these are 250 kHz and 8 MHz.
+- Finite HAL transfer and card-busy/token waits, with HAL errors propagated.
+- CMD0 is issued without a prior SPI-ready requirement: it establishes SPI
+  mode. Subsequent commands still check ready before transmission.
+- CSD-derived capacity instead of the example's fixed 32 MB.
+- SDSC byte addressing/CMD16 and SDHC sector addressing.
+- Repeated single-sector transactions for multi-sector requests, avoiding
+  the supplied CMD12/CMD25 stop/recovery issues. This trades throughput for
+  simpler polling transfers.
+- One directly registered FatFs SD_Driver, including after unmount/remount.
+- Accurate disk status and CTRL_SYNC, const-correct write buffers.
+- Text-helper input validation and reporting of close/flush failures.
 
-| Function | Configuration |
-| --- | --- |
-| SD SCK | PB3, SPI3 SCK, AF6 |
-| SD MISO | PB4, SPI3 MISO, AF6 |
-| SD MOSI | PC12, SPI3 MOSI, AF6 |
-| SD CS | PB2, `CS`, GPIO push-pull output, initial HIGH |
-| SPI | Full duplex master, 8-bit, MSB first, mode 0, software NSS, hardware CRC disabled |
-| SPI3 RX DMA | DMA1 Stream0, Channel0, peripheral-to-memory |
-| SPI3 TX DMA | DMA1 Stream5, Channel0, memory-to-peripheral |
-| Both DMA streams | Normal mode, byte alignment, memory increment ON, peripheral increment OFF, FIFO OFF |
-| DMA IRQs | Both enabled, preemption priority 6 |
-| SPI3 global IRQ | Enabled, preemption priority 6, calls `HAL_SPI_IRQHandler(&hspi3)` |
-| HAL tick (TIM6) | Priority 5, higher urgency than SPI/DMA; `TICK_INT_PRIORITY=5` |
+SPI3: PB3 SCK, PB4 MISO, PC12 MOSI, PB2 GPIO CS. Use master full duplex,
+mode 0, 8-bit, MSB first, software NSS, CRC disabled. No .ioc regeneration is
+needed for polling. Existing SPI DMA configuration can remain initialized but
+is unused by these SD routines; do not remove unrelated UART DMA settings.
 
-The existing DMA channel/stream choices were correct. SPI3 error IRQ forwarding
-and tick priority were added. HAL's DMA completion routine can itself wait for
-SPI flags with a tick timeout, so TIM6 must be able to preempt it. Keep interrupts
-and the HAL tick running during every SD operation. Do not call SD/FatFs from an
-ISR, interrupt-disabled region, or competing callers. `_FS_REENTRANT` is disabled.
+MX_GPIO_Init and MX_SPI3_Init must precede SDCard_Init. The generated project
+may still initialize DMA for other peripherals. sd_mount links SD_Driver once
+using FATFS_LinkDriver. Keep CubeMX's "Do Not Generate Function Call" checked
+for MX_FATFS_Init; do not call it manually. The generated function may remain
+in fatfs.c without being used. An already registered different driver returns
+FR_NOT_ENABLED instead of replacing it or attempting duplicate registration.
 
-`MX_DMA_Init()` must run before `MX_SPI3_Init()`; the generated main already does.
-`sd_mount()` lazily calls `MX_FATFS_Init()` if no driver is registered. It also
-works if CubeMX calls `MX_FATFS_Init()` once during startup. Do not call it again
-manually or separately link `SD_Driver`: only one volume is configured.
-
-The driver selects an SPI divisor giving at most 400 kHz for initialization,
-then at most 8 MHz after success. With the current 16 MHz PCLK1 this is 250 kHz
-(prescaler 64) and 8 MHz (prescaler 2). It recalculates from PCLK1 when initialized.
-Reinitialize after any clock-tree change.
-
-The attached BerryBase MSD-AADP datasheet specifies **4.5–5.5 V module power**, an
-onboard 3.3 V regulator, SPI, SDSC up to 2 GB, and SDHC up to 32 GB. Use a common
-ground and FAT16/FAT32 media; this build has no exFAT support. The supplied sheet
-does not establish the module's SPI input thresholds. Verify 3.3 V MCU signal
-compatibility and a MISO pull-up in the actual module/wiring. Module VCC and SD
-card logic voltage are different considerations.
+Keep HAL tick and interrupts enabled. Call from the main loop, not an ISR;
+use one caller. Polling occupies the main loop while commands, bytes and card
+programming complete. Low average logging frequency does not eliminate
+occasional card latency: measure write + sync duration with the actual card.
 
 ## Application use
-
-Call after generated GPIO, DMA and SPI initialization, e.g. from `App_Init()`:
 
 ```c
 #include "drivers/SDCard.h"
 
 if (!SDCard_Init() || !SDCard_OpenAppend("0:/flight.csv")) {
-    FRESULT reason = SDCard_GetLastResult();
-    /* Record reason / disable logging according to application policy. */
-    (void)reason;
+    FRESULT error = SDCard_GetLastResult();
+    (void)error; /* Record/report according to application policy. */
     return;
 }
-if (!SDCard_WriteString("time,altitude\r\n") || !SDCard_Sync()) {
-    /* Inspect SDCard_GetLastResult(); do not assume the row is durable. */
+if (!SDCard_WriteString("1234,25.0,101325\r\n") || !SDCard_Sync()) {
+    FRESULT error = SDCard_GetLastResult();
+    (void)error;
 }
 ```
 
-Write the CSV header only when appropriate for a new flight/file; OpenAppend
-preserves existing content. `SDCard_CreateFile()` uses `FA_CREATE_NEW` and returns
-`FR_EXIST` instead of overwriting an existing file. Only one output file can be
-open through this facade. `SDCard_Write(data, length)` supports binary data.
+SDCard keeps a FIL open for logging. CreateFile refuses to overwrite an
+existing file; OpenAppend preserves its contents. Write accepts binary bytes;
+ReadFile reads from offset zero without adding a NUL terminator. Sync flushes
+its output file. CloseFile and DeInit must be checked before removal.
+A successful Write alone may leave bytes in FatFs's sector cache.
 
-`SDCard_ReadFile(name, buffer, capacity, &bytes_read)` opens a file for reading
-at offset zero and closes it after the call. It does not add a string terminator;
-check `bytes_read`, since EOF can produce a successful short read. Close an output
-file before reading that same file (FatFs file locking is enabled).
+The text convenience functions in sd_functions remain available for callers
+that want open/write/close per call. SDCard uses their mount lifecycle but
+retains FatFs file operations for persistent, binary-safe logging rather than
+substituting the text-only helpers. Do not independently unmount a volume
+while SDCard owns an open file.
 
-During logging, use `SDCard_Sync()` at an application-chosen interval. At shutdown,
-check `SDCard_CloseFile()` and `SDCard_DeInit()` results before removing power.
-FatFs can cache partial sectors, so Write success alone is not a durability
-guarantee. DMA completion is only a bus-transfer event, not file completion.
+After an error, save SDCard_GetLastResult before calling SDCard_DeInit:
+cleanup can replace the last result. DeInit releases stale handles and clears
+card initialization; Init then performs physical initialization again.
+There is no automatic formatting. Use FAT16/FAT32 media, not exFAT.
 
-All these operations **block until completion**. Sector payloads use DMA, but
-commands, token waits, and card programming still take time in the calling task.
-The 100 ms transfer timeout and 1 s ready/token timeout bound individual waits;
-an entire multi-sector file operation can take longer. Do not treat IsBusy as an
-asynchronous queue. A future nonblocking logger needs a queue and a dedicated
-task/state machine; it cannot return from FatFs disk_read/write before completion.
+## Test and benchmark
 
-After an I/O failure, `SDCard_DeInit()` releases stale file/mount state even if
-closing failed (and returns false to report the failure). Then retry Init and
-reopen the file. Removal has no dedicated detect input; status reflects successful
-initialization until an operation detects an error. There is no automatic format.
-Do not independently unmount through `sd_functions` while using an SDCard file.
+### Viewing SPI diagnostics
 
-The convenience functions remain usable directly:
+Use the STM32 test console on USART3: PC10 TX -> adapter RX, PC11 RX <-
+adapter TX, common ground, 3.3 V logic, 115200 baud, 8N1. Set the serial
+monitor line ending to LF or CRLF. In TestSD or TestSDText, send `diag` or
+`status` followed by Enter. The printed `SPI init_stage=... CMD=...` line is
+the diagnostics. No debugger is needed, and opening the monitor after startup
+is fine: the command repeats the values. Values describe the last operation,
+not an ongoing SPI trace; token specifically records the initialization CSD token.
 
-```c
-#include "sd_functions.h"
+To inspect in a debugger, load the same Debug-built ELF that was flashed and
+start a debug session. After the test finishes, pause execution (or break in
+App_RunOnce). Add `sd_spi_diagnostics` in Watch and expand it. Individual
+expressions such as `sd_spi_diagnostics.init_stage` and
+`sd_spi_diagnostics.response` also work. These are global variables, not local
+variables of main. A plain serial connection does not provide debugger access.
+If the symbol is missing, check the selected ELF/preset and that the firmware
+contains the updated SD source. Pause after IO, not in the middle of a transfer.
 
-if (sd_mount() == FR_OK) {
-    int result = sd_append_file("0:/notes.txt", "Hello\r\n");
-    /* result is an FRESULT code; each helper opens and closes its file. */
-    (void)result;
-    (void)sd_unmount();
-}
+### CSV open/close/append test
+
+Build the TestSDText preset and flash `build/TestSDText/test_sd_text.elf`.
+Source: `Tests/test_sd_text.c`. Do not add its App_Init/App_RunOnce alongside
+another application's hooks; the preset selects it automatically.
+
+The test creates a new `SDC0000.CSV` (or next unused number), writes a header
+and first row, closes, opens for reading and verifies, closes, reopens for
+append, adds a row and closes again. It unmounts/remounts, verifies the entire
+file, then unmounts. Existing files are never overwritten. Expected text:
+
+```csv
+time_ms,event
+0,opened
+1000,appended
 ```
 
-`sd_write_file()` replaces the named file; `sd_append_file()` preserves it.
-`sd_read_file()` is a text helper: pass capacity including the NUL terminator.
-The CSV helper handles only unquoted `field1,field2,integer` records, no header.
-Directory listing is bounded to four levels and rejects truncated paths.
-Diagnostic printing requires a retargeted `__io_putchar`; otherwise `_write`
-returns an error instead of calling an undefined weak function. Normal mount,
-read/write and SDCard APIs do not depend on printf.
+These are fixed test values, not measured timestamps. The monitor shows each
+step followed by `SD TEXT PASS state=2 stage=12 FRESULT=0 file=...` on success.
+Commands: `status`, `diag`, `run` (creates another new file), `help`.
+After PASS, the volume is unmounted; stop/reset the board before removing the
+card and open the CSV on a computer. Do not send `run` while the card is removed.
+Debugger variables: sd_text_state, sd_text_stage, sd_text_result,
+sd_text_filename and sd_text_readback.
 
-## Implementation details and regeneration
+### Binary verification test
 
-- `sd_spi.c` owns `HAL_SPI_TxRxCpltCallback` and `HAL_SPI_ErrorCallback` for SPI3.
-  If adding other SPI drivers, dispatch from these existing callbacks instead
-  of defining another function with the same name.
-- Both read and write payloads use full-duplex DMA, draining RX during writes.
-  Two static 512-byte staging buffers reside in DMA-accessible SRAM. Caller data
-  is copied, so buffers in CCM are safe; do not move staging buffers into CCM.
-- SDSC uses byte addresses and CMD16 for 512-byte blocks. SDHC uses sector
-  addresses. Capacity comes from CSD, not the tutorial's fixed 32 MB placeholder.
-- CMD12 stuff/busy handling, multi-write stop tokens, timeouts, HAL launch errors,
-  and DMA error callbacks are handled. A failed transfer invalidates card status.
-- Disk `CTRL_SYNC` actually waits for the card. File helpers propagate short
-  writes and close/flush errors.
-- The linker and IOC reserve 8 KiB stack for FatFs file objects, bounded directory
-  recursion and IRQ headroom. `_USE_LFN=3` uses the existing malloc/free hooks.
-- No RTC is configured; file timestamps are fixed to 2026-01-01, not real time.
-- Disk glue and the timestamp change are inside CubeMX USER CODE sections.
-  NVIC settings and stack reservation are reflected in Documents.ioc. After
-  regeneration check `TICK_INT_PRIORITY=5` and the table above. Keep the custom
-  source list in the top-level CMake file.
+Build/flash TestSD (build/TestSD/test_sd.elf). The functional test creates a new
+SDTnnnn.BIN, writes 1537 bytes, appends 37, remounts and compares all 1574 bytes.
+Inspect sd_test_state (2 pass, -1 fail), sd_test_stage and sd_test_result.
+This validates SD commands/filesystem operations that the Uno SPI test bypasses.
 
-## Verification
+TestSD also prints sd_spi_diagnostics, available directly in the debugger.
+init_stage: 1=preconditions, 2=startup clock, 3=CMD0, 4=CMD8, 5=CMD55/ACMD41,
+6=CMD58/OCR, 7=CMD16, 8=CMD9/CSD, 9=run clock, 10=initialization succeeded.
+command/response record the latest command and R1. command_sent=0 indicates
+wait-ready failed before command transmission was attempted. token records the
+CSD data token; R7/OCR retain the returned register values. hal_status retains
+the first HAL failure since initialization (0=OK, 1=ERROR, 2=BUSY, 3=TIMEOUT).
+Cleanup after a failed mount does not clear these diagnostics. Command fields
+continue updating during subsequent successful file IO; init_stage stays at 10.
 
-Host tests use MinGW GCC and run without a board:
+A failure at the explicit SD_disk_initialize call happens before f_mount and
+does not depend on whether the direct driver or a forwarding USER_Driver was
+registered. Registration changes alone do not diagnose that physical failure.
 
+Host regression:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File Tests/host/run_sd_tests.ps1
 ```
+Requires GCC on PATH. The polling SPI simulator checks startup speed,
+SDHC/SDSC addressing, capacity, multiple sectors, HAL errors, busy timeout
+across tick rollover, and operation without DMA handles. The filesystem
+suite uses the bundled FatFs with an in-memory disk, not a physical card.
 
-They exercise wire-level SD sequences against a HAL simulator, including SDSC,
-SDHC, multi-block termination, DMA errors, lost interrupts and tick rollover.
-A separate test runs the actual bundled FatFs against an in-memory block device
-to check file operations, remounts, long names, validation and flush failures.
-The only formatted medium in these tests is the in-memory array.
+sd_benchmark is an opt-in polling throughput measurement. It creates bench.bin
+with FA_CREATE_NEW, so delete/rename an old benchmark file deliberately before
+rerunning. It includes close time and returns zero on incomplete IO/close
+failure. Its fixed-pattern timing test does not verify payload integrity;
+use TestSD for readback comparison. It is never called automatically in flight.
 
-Build the on-board test in the STM32 toolchain environment:
-
-```powershell
-cmake --preset TestSD
-cmake --build --preset TestSD
-```
-
-Flash `build/TestSD/test_sd.elf` manually and inspect `sd_test_state`: 2 means
-passed, -1 means failed. On failure inspect `sd_test_stage` and `sd_test_result`.
-It creates a new `SDTnnnn.BIN`, writes 1537 bytes, appends 37 bytes, remounts,
-then compares all 1574 bytes. Existing files are preserved. Inspect that file on
-a computer and verify 250 kHz initialization and 8 MHz run clocks with this
-project's current 16 MHz PCLK1.
-No hardware test has been run by this change.
-
-`sd_benchmark()` is a separate opt-in diagnostic, never called by flight startup.
-It creates `bench.bin` without overwriting, verifies every byte, includes close
-time in its write timing, and suppresses speed results on failure.
-
-References: [SPI SD initialization and transfers](https://elm-chan.org/docs/mmc/mmc_e.html),
-[FatFs disk_write contract](https://elm-chan.org/fsw/ff/doc/dwrite.html),
-[FatFs disk_ioctl contract](https://elm-chan.org/fsw/ff/doc/dioctl.html).
+References:
+- https://elm-chan.org/docs/mmc/mmc_e.html
+- https://elm-chan.org/fsw/ff/doc/dioctl.html

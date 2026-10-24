@@ -3,34 +3,65 @@
 #include "apps/CameraControl.h"
 #include "drivers/Switches.h"
 #include "Console.h"
+#include <string.h>
 
 CameraState test_camera;
 bool test_camera_complete;
-static bool recordingStarted;
-static uint32_t recordingStart;
+volatile uint32_t test_camera_reset_flags;
+bool test_camera_console_ok;
+static char command[CONSOLE_LINE_MAX + 1U];
 
 void App_Init(void)
 {
-    (void)Console_Init();
+    test_camera_reset_flags = RCC->CSR;
+    __HAL_RCC_CLEAR_RESET_FLAGS();
+    test_camera_console_ok = Console_Init();
     (void)Switches_Init();
     test_camera = (CameraState){0};
-    recordingStarted = test_camera_complete = false;
-    CameraControl_Start(&test_camera);
-    Console_Write("Camera powered; capture high for 1 second.\r\n");
+    test_camera_complete = false;
+    Console_Printf("Boot reset flags: 0x%08lX; BOR=%u POR=%u PIN=%u SW=%u IWDG=%u WWDG=%u\r\n",
+        (unsigned long)test_camera_reset_flags,
+        (unsigned)((test_camera_reset_flags & RCC_CSR_BORRSTF) != 0),
+        (unsigned)((test_camera_reset_flags & RCC_CSR_PORRSTF) != 0),
+        (unsigned)((test_camera_reset_flags & RCC_CSR_PINRSTF) != 0),
+        (unsigned)((test_camera_reset_flags & RCC_CSR_SFTRSTF) != 0),
+        (unsigned)((test_camera_reset_flags & RCC_CSR_IWDGRSTF) != 0),
+        (unsigned)((test_camera_reset_flags & RCC_CSR_WWDGRSTF) != 0));
+    Console_Write("Camera ready. Commands: record, stop, status (press Enter).\r\n");
 }
 void App_RunOnce(void)
 {
     Console_Process();
-    if (test_camera_complete) return;
+    ConsoleLineResult input = Console_ReadLine(command, sizeof(command));
+    if (input == CONSOLE_LINE_READY) {
+        if (strcmp(command, "record") == 0) {
+            if (test_camera.isOn) {
+                Console_Write(test_camera.isRecording ? "Already recording.\r\n" : "Recording startup in progress.\r\n");
+            } else {
+                test_camera_complete = false;
+                Console_Write("record received; powering camera now.\r\n");
+                CameraControl_Start(&test_camera);
+                Console_Write("Camera powered; starting capture pulse.\r\n");
+            }
+        } else if (strcmp(command, "stop") == 0) {
+            CameraControl_Stop(&test_camera);
+            test_camera_complete = true;
+            Console_Write("Recording stopped; DVR off.\r\n");
+        } else if (strcmp(command, "status") == 0) {
+            Console_Printf("Camera on=%u recording=%u; RX bytes=%lu lines=%lu errors=%lu dropped=%lu\r\n",
+                (unsigned)test_camera.isOn, (unsigned)test_camera.isRecording,
+                (unsigned long)console_diagnostics.rx_received_bytes,
+                (unsigned long)console_diagnostics.completed_lines,
+                (unsigned long)console_diagnostics.rx_errors,
+                (unsigned long)console_diagnostics.rx_dropped_bytes);
+        } else {
+            Console_Write("Unknown command. Use record, stop or status.\r\n");
+        }
+    } else if (input < 0) {
+        Console_Write("Input rejected/lost. Press Enter and resend.\r\n");
+    }
+    bool wasRecording = test_camera.isRecording;
     CameraControl_Update(&test_camera);
-    if (test_camera.isRecording && !recordingStarted) {
-        recordingStarted = true;
-        recordingStart = HAL_GetTick();
-        Console_Write("Recording for 10 seconds.\r\n");
-    }
-    if (recordingStarted && (uint32_t)(HAL_GetTick() - recordingStart) >= 10000U) {
-        CameraControl_Stop(&test_camera);
-        test_camera_complete = true;
-        Console_Write("Capture high, DVR off; sequence complete. Check camera recording.\r\n");
-    }
+    if (!wasRecording && test_camera.isRecording)
+        Console_Write("Recording. Send stop to finish.\r\n");
 }

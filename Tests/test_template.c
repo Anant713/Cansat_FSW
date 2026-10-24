@@ -9,8 +9,10 @@ static char command[CONSOLE_LINE_MAX + 1U];
  */
 void App_Init(void)
 {
-    (void)Console_Init();
-    Console_Write("Test scaffold ready; no functional test implemented.\r\n");
+    bool console_ok = Console_Init();
+    Console_Write(console_ok ? "Console RX started. USART3: 115200 8N1, no flow control.\r\n" :
+        "Console RX start failed; main loop will retry.\r\n");
+    Console_Write("Select Newline or CRLF in the serial monitor. Send text to receive an echo.\r\n");
     /* TODO: Initialize only the driver/module under test and its dependencies.
      * Set up test inputs and result storage; check initialization results.
      */

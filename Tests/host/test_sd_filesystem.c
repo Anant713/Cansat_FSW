@@ -1,4 +1,4 @@
-/* Exercises the real bundled FatFs, USER glue, file helpers and SDCard facade
+/* Exercises the real bundled FatFs, direct SD driver, helpers and SDCard facade
  * against an in-memory block device. No host disk/card is formatted. */
 #include "drivers/SDCard.h"
 #include "sd_functions.h"
@@ -33,7 +33,9 @@ int main(void)
     for (unsigned i = 0; i < sizeof(sent); ++i) sent[i] = (uint8_t)(i * 37U + i / 251U);
     assert(sd_mount() == FR_NO_FILESYSTEM);
     assert(FATFS_GetAttachedDriversNbr() == 1);
-    assert(f_mkfs(USERPath, FM_FAT | FM_SFD, 0, work, sizeof(work)) == FR_OK);
+    extern Disk_drvTypeDef disk;
+    assert(disk.drv[0] == &SD_Driver);
+    assert(f_mkfs(sd_path, FM_FAT | FM_SFD, 0, work, sizeof(work)) == FR_OK);
     assert(SDCard_Init());
     unsigned before = initializations;
     assert(SDCard_Init() && initializations == before);

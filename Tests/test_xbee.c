@@ -106,7 +106,7 @@ void App_RunOnce(void)
         Console_WriteBytes(bytes, length); /* Explicit length preserves embedded NUL. */
         Console_Write("\r\n");
     }
-    if ((uint32_t)(HAL_GetTick() - report_tick) >= 2000U) {
+    if ((uint32_t)(HAL_GetTick() - report_tick) >= 10000U) {
         report_tick = HAL_GetTick(); report();
     }
 }

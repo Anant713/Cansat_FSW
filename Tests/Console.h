@@ -17,6 +17,8 @@ typedef enum {
 typedef struct {
     uint32_t rx_dropped_bytes, rx_errors, rx_restart_failures;
     uint32_t rejected_lines, tx_errors, format_errors;
+    uint32_t rx_received_bytes, completed_lines;
+    uint32_t last_rx_error_flags; /* USART SR: PE=1, FE=2, NE=4, ORE=8. */
 } ConsoleDiagnostics;
 extern volatile ConsoleDiagnostics console_diagnostics;
 

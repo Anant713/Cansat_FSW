@@ -1,6 +1,7 @@
 #include "App.h"
 #include "Console.h"
 #include "drivers/SDCard.h"
+#include "sd_spi.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -18,6 +19,11 @@ static void report(void)
     Console_Printf("SD %s state=%d stage=%lu FRESULT=%u file=%s\r\n",
         sd_test_state == 2 ? "PASS" : sd_test_state == -1 ? "FAIL" : "RUNNING",
         sd_test_state, (unsigned long)sd_test_stage, (unsigned)sd_test_result, sd_test_filename);
+    Console_Printf("SPI init_stage=%u CMD=%u sent=%u R1=0x%02X token=0x%02X HAL=%u R7=0x%08lX OCR=0x%08lX\r\n",
+        (unsigned)sd_spi_diagnostics.init_stage, (unsigned)sd_spi_diagnostics.command,
+        (unsigned)sd_spi_diagnostics.command_sent, (unsigned)sd_spi_diagnostics.response,
+        (unsigned)sd_spi_diagnostics.token, (unsigned)sd_spi_diagnostics.hal_status,
+        (unsigned long)sd_spi_diagnostics.r7, (unsigned long)sd_spi_diagnostics.ocr);
 }
 
 void App_Init(void)
@@ -70,7 +76,7 @@ void App_RunOnce(void)
     Console_Process();
     ConsoleLineResult input = Console_ReadLine(command, sizeof(command));
     if (input == CONSOLE_LINE_READY) {
-        if (!strcmp(command, "status")) report();
-        else Console_Write("Commands: status, help. Reset to rerun the SD test.\r\n");
+        if (!strcmp(command, "status") || !strcmp(command, "diag")) report();
+        else Console_Write("Commands: status, diag, help. Reset to rerun the SD test.\r\n");
     } else if (input < 0) Console_Write("Input rejected/lost. Press Enter and resend.\r\n");
 }

@@ -19,8 +19,7 @@
 #include "fatfs.h"
 #include <stdint.h>
 
-/* One CubeMX-owned volume. All helpers are blocking and single-caller. */
-#define sd_path USERPath
+extern char sd_path[];
 
 // Mount and unmount
 int sd_mount(void);

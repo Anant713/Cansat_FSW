@@ -1,57 +1,78 @@
-/* Adapted from ControllersTech sd_diskio_spi.c, June 26, 2025.
- * https://controllerstech.com -- original permitted learning/development use. */
-#include "sd_diskio_spi.h"
-#include "sd_spi.h"
+/******************************************************************************
+ *  File        : sd_diskio_spi.c
+ *  Author      : ControllersTech
+ *  Website     : https://controllerstech.com
+ *  Date        : June 26, 2025
+ *
+ *  Description :
+ *    This file is part of a custom STM32/Embedded tutorial series.
+ *    For documentation, updates, and more examples, visit the website above.
+ *
+ *  Note :
+ *    This code is written and maintained by ControllersTech.
+ *    You are free to use and modify it for learning and development.
+ ******************************************************************************/
 
-DSTATUS SD_disk_status(BYTE drv)
-{
-    return drv == 0 && card_initialized ? 0 : STA_NOINIT;
+
+#include "diskio.h"
+#include "sd_spi.h"
+#include "ff_gen_drv.h"
+
+
+DSTATUS SD_disk_status(BYTE drv) {
+    if (drv != 0)
+        return STA_NOINIT;
+    return card_initialized ? 0 : STA_NOINIT;
 }
-DSTATUS SD_disk_initialize(BYTE drv)
-{
-    return drv == 0 && SD_SPI_Init() == SD_OK ? 0 : STA_NOINIT;
+
+DSTATUS SD_disk_initialize(BYTE drv) {
+    if (drv != 0)
+        return STA_NOINIT;
+
+    return (SD_SPI_Init() == SD_OK) ? 0 : STA_NOINIT;
 }
-DRESULT SD_disk_read(BYTE drv, BYTE *buffer, DWORD sector, UINT count)
-{
-    if (drv || !buffer || !count) return RES_PARERR;
-    if (!card_initialized) return RES_NOTRDY;
-    if (sector >= SD_GetSectorCount() || count > SD_GetSectorCount() - sector)
+
+DRESULT SD_disk_read(BYTE pdrv, BYTE *buff, DWORD sector, UINT count) {
+    if (pdrv != 0 || !buff || count == 0)
         return RES_PARERR;
-    return SD_ReadBlocks(buffer, sector, count) == SD_OK ? RES_OK : RES_ERROR;
-}
-DRESULT SD_disk_write(BYTE drv, const BYTE *buffer, DWORD sector, UINT count)
-{
-    if (drv || !buffer || !count) return RES_PARERR;
     if (!card_initialized) return RES_NOTRDY;
-    if (sector >= SD_GetSectorCount() || count > SD_GetSectorCount() - sector)
+    return (SD_ReadBlocks(buff, sector, count) == SD_OK) ? RES_OK : RES_ERROR;
+}
+
+DRESULT SD_disk_write(BYTE pdrv, const BYTE *buff, DWORD sector, UINT count) {
+    if (pdrv || !buff || !count) return RES_PARERR;
+    if (!card_initialized) return RES_NOTRDY;
+    return (SD_WriteBlocks(buff, sector, count) == SD_OK) ? RES_OK : RES_ERROR;
+}
+
+DRESULT SD_disk_ioctl(BYTE pdrv, BYTE cmd, void *buff) {
+    if (pdrv != 0)
         return RES_PARERR;
-    return SD_WriteBlocks(buffer, sector, count) == SD_OK ? RES_OK : RES_ERROR;
-}
-DRESULT SD_disk_ioctl(BYTE drv, BYTE cmd, void *buffer)
-{
-    if (drv) return RES_PARERR;
+
     if (!card_initialized) return RES_NOTRDY;
-    if (cmd == CTRL_SYNC) return SD_Sync() == SD_OK ? RES_OK : RES_ERROR;
-    if (!buffer) return RES_PARERR;
+    if (cmd != CTRL_SYNC && !buff) return RES_PARERR;
+
     switch (cmd) {
+    case CTRL_SYNC:
+        return SD_Sync() == SD_OK ? RES_OK : RES_ERROR;
     case GET_SECTOR_SIZE:
-        *(WORD *)buffer = SD_BLOCK_SIZE;
+        *(WORD *)buff = 512;
         return RES_OK;
     case GET_SECTOR_COUNT:
-        *(DWORD *)buffer = SD_GetSectorCount();
+        *(DWORD *)buff = SD_GetSectorCount();
         return RES_OK;
     case GET_BLOCK_SIZE:
-        /* Unknown erase geometry: FatFs permits 1 as the fallback. */
-        *(DWORD *)buffer = 1;
+        *(DWORD *)buff = 1;
         return RES_OK;
     default:
         return RES_PARERR;
     }
 }
-/* Kept for compatibility. The project registers USER_Driver, whose callbacks
- * forward here; do not register this second table as another volume. */
+
 const Diskio_drvTypeDef SD_Driver = {
-    SD_disk_initialize, SD_disk_status, SD_disk_read,
+    SD_disk_initialize,
+    SD_disk_status,
+    SD_disk_read,
 #if _USE_WRITE
     SD_disk_write,
 #endif

@@ -80,14 +80,28 @@ bool AHT20_IsReady(AHT20 *dev)
     if (dev->state != AHT20_MEASURING ||
         (uint32_t)(HAL_GetTick()-dev->started_ms) < AHT20_MEASUREMENT_MS)
         return Sensor_Fail(&dev->io, SENSOR_NOT_READY);
-    uint8_t status;
-    if (!read_status(dev, &status)) { dev->state = AHT20_IDLE; return false; }
+    /* Read status + payload + CRC together, without a separate 0x71 command
+     * or a one-byte transaction before the measurement frame. */
+    uint8_t frame[7];
+    if (!SensorI2C_Receive(&dev->io, frame, sizeof(frame))) {
+        dev->state = AHT20_IDLE;
+        return false;
+    }
+    memcpy(dev->frame, frame, sizeof(frame));
+    ++dev->frame_count;
+    dev->calculated_crc = crc8(frame);
+    uint8_t status = frame[0];
     if (status & 0x80U) {
         if ((uint32_t)(HAL_GetTick()-dev->started_ms) >= AHT20_BUSY_TIMEOUT_MS) {
             dev->state = AHT20_IDLE;
             return Sensor_Fail(&dev->io, SENSOR_TIMEOUT);
         }
         return Sensor_Fail(&dev->io, SENSOR_NOT_READY);
+    }
+    if (dev->calculated_crc != frame[6]) {
+        ++dev->crc_errors;
+        dev->state = AHT20_IDLE;
+        return Sensor_Fail(&dev->io, SENSOR_BAD_DATA);
     }
     if ((status & 0x18U) != 0x18U) {
         dev->state = AHT20_IDLE;
@@ -104,21 +118,8 @@ bool AHT20_Read(AHT20 *dev, AHT20Data *data)
     if (dev == NULL) return false;
     if (data == NULL) return Sensor_Fail(&dev->io, SENSOR_BAD_ARGUMENT);
     if (!AHT20_IsReady(dev)) return false;
-    uint8_t frame[7];
-    if (!SensorI2C_Receive(&dev->io, frame, sizeof(frame))) {
-        dev->state = AHT20_IDLE;
-        return false;
-    }
-    if (frame[0] & 0x80U) {
-        dev->state = AHT20_MEASURING;
-        if ((uint32_t)(HAL_GetTick()-dev->started_ms) >= AHT20_BUSY_TIMEOUT_MS) {
-            dev->state = AHT20_IDLE;
-            return Sensor_Fail(&dev->io, SENSOR_TIMEOUT);
-        }
-        return Sensor_Fail(&dev->io, SENSOR_NOT_READY);
-    }
+    const uint8_t *frame = dev->frame;
     dev->state = AHT20_IDLE;
-    if (crc8(frame) != frame[6]) return Sensor_Fail(&dev->io, SENSOR_BAD_DATA);
     if ((frame[0] & 0x18U) != 0x18U) {
         dev->initialized = false;
         return Sensor_Fail(&dev->io, SENSOR_CALIBRATION_ERROR);

@@ -90,9 +90,14 @@ int main(void)
     feed("abc\b\177Z\n");
     assert(read_line(line, sizeof(line)) == CONSOLE_LINE_READY && !strcmp(line, "aZ"));
     feed("partial");
+    uint32_t completed = console_diagnostics.completed_lines;
+    uint32_t received = console_diagnostics.rx_received_bytes;
     assert(read_line(line, sizeof(line)) == CONSOLE_NO_LINE);
+    assert(console_diagnostics.completed_lines == completed);
     feed(" command\n");
     assert(read_line(line, sizeof(line)) == CONSOLE_LINE_READY && !strcmp(line, "partial command"));
+    assert(console_diagnostics.completed_lines == completed + 1);
+    assert(console_diagnostics.rx_received_bytes == received + 9);
     for (unsigned i = 0; i < 300; ++i) {
         feed("wrap\n");
         assert(read_line(line, sizeof(line)) == CONSOLE_LINE_READY && !strcmp(line, "wrap"));
@@ -123,6 +128,7 @@ int main(void)
     rx_result = HAL_ERROR;
     feed_byte('x');
     assert(console_diagnostics.rx_errors == 1 && huart3.RxState == HAL_UART_STATE_READY);
+    assert(console_diagnostics.last_rx_error_flags == USART_SR_ORE);
     rx_result = HAL_OK;
     Console_Process();
     assert(read_line(line, sizeof(line)) == CONSOLE_INPUT_LOST);

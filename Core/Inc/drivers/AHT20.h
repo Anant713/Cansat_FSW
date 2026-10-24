@@ -17,11 +17,18 @@ typedef struct {
     AHT20State state;
     uint32_t started_ms;
     float humidity_offset_rh;
+    /* Last complete I2C frame, retained across measurement triggers for diagnosis. */
+    uint8_t frame[7];
+    uint8_t calculated_crc;
+    uint32_t frame_count;
+    uint32_t crc_errors;
 } AHT20;
 
 /* Startup only; waits for power-on/calibration. Measurements never HAL_Delay. */
 bool AHT20_Init(AHT20 *dev, I2C_HandleTypeDef *bus);
 bool AHT20_StartMeasurement(AHT20 *dev);
+/* After 80 ms, receives/caches a complete frame. Read consumes that cache.
+ * Conversion waiting is nonblocking; the short I2C transfer uses polling. */
 bool AHT20_IsReady(AHT20 *dev);
 bool AHT20_Read(AHT20 *dev, AHT20Data *data);
 bool AHT20_SetCalibration(AHT20 *dev, float humidity_offset_rh);

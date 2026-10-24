@@ -18,8 +18,6 @@
 
 #include <stdint.h>
 
-/* Standalone diagnostic: creates 0:/bench.bin (refuses to overwrite), verifies
- * data, then unmounts. Run with no other open files. printf needs retargeting. */
 void sd_benchmark(void);
 
 #endif // __SD_BENCHMARK_H__

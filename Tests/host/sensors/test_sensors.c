@@ -98,7 +98,7 @@ HAL_StatusTypeDef HAL_I2C_Master_Receive(I2C_HandleTypeDef *h, uint16_t addr,
     assert(addr == 0x70);
     if (n == 1) *data = aht_status;
     else if (n == 3) { data[0] = 0; data[1] = 0x55; data[2] = 0x42; }
-    else { assert(n == 7); memcpy(data, aht_frame, 7); }
+    else { assert(n == 7); memcpy(data, aht_frame, 7); data[0] = aht_status; }
     return HAL_OK;
 }
 static void reset(void)
@@ -177,7 +177,11 @@ static void test_aht(void)
     const uint8_t frame[] = {0x18,0x80,0,0x06,0,0,0x23};
     memcpy(aht_frame, frame, 7);
     tick += 1000; /* completed data can be consumed by a slow main loop */
+    calls = transfers;
+    assert(AHT20_IsReady(&dev));
+    assert(transfers == calls + 1); /* one frame read, no status command */
     assert(AHT20_IsReady(&dev) && AHT20_Read(&dev, &out) && out.valid);
+    assert(transfers == calls + 1); /* Read consumes cache without more I2C */
     near(out.humidity, 50, 0.001f);
     assert(AHT20_Calibrate(&dev, &out, 52));
     assert(AHT20_StartMeasurement(&dev)); tick += 80; aht_status = 0x18;
@@ -185,7 +189,9 @@ static void test_aht(void)
     assert(!AHT20_Read(&dev, &out) && !out.valid);
     assert(AHT20_StartMeasurement(&dev)); tick += 80; aht_status = 0x18; aht_frame[6] ^= 1;
     assert(!AHT20_Read(&dev, &out) && !out.valid && dev.io.status == SENSOR_BAD_DATA);
+    assert(dev.crc_errors == 1 && dev.calculated_crc == 0x23 && dev.frame[6] == 0x22);
     assert(AHT20_StartMeasurement(&dev)); tick += 500;
+    assert(dev.crc_errors == 1); /* trigger must not erase failure evidence */
     assert(!AHT20_IsReady(&dev) && dev.io.status == SENSOR_TIMEOUT && dev.state == AHT20_IDLE);
     assert(AHT20_StartMeasurement(&dev)); tick += 80; next_error = HAL_ERROR;
     assert(!AHT20_IsReady(&dev) && dev.io.status == SENSOR_IO_ERROR && dev.state == AHT20_IDLE);

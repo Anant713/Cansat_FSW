@@ -4,6 +4,11 @@
 #include <limits.h>
 #include <string.h>
 
+/* Application facade over sd_mount/sd_unmount and FatFs. The disk callbacks
+ * route all data through the supplied sd_spi polling driver. Keep a FIL open
+ * for logging: the supplied text helpers open/close per call and cannot replace
+ * this binary-safe Write/Sync API without changing application behavior. */
+
 static FIL file;
 static bool mounted, file_open;
 static SDCardStatus status = SDCARD_ERROR;
@@ -29,6 +34,7 @@ bool SDCard_Init(void)
     if (status == SDCARD_BUSY) return false;
     if (mounted && card_initialized) return result(FR_OK);
     if (file_open) return result(FR_LOCKED); /* DeInit explicitly after errors. */
+    memset(&file, 0, sizeof(file));
     status = SDCARD_BUSY;
     FRESULT value = (FRESULT)sd_mount();
     mounted = value == FR_OK;
@@ -81,7 +87,7 @@ bool SDCard_ReadFile(const char *name, uint8_t *data, uint32_t capacity,
 {
     if (bytes_read) *bytes_read = 0;
     if (!begin()) return false;
-    if (!name || !data || !bytes_read || capacity > UINT_MAX)
+    if (!name || !*name || !data || !bytes_read || capacity > UINT_MAX)
         return result(FR_INVALID_PARAMETER);
     /* Reads start at byte zero; caller decides whether EOF/short read is OK. */
     FIL input;
@@ -120,7 +126,12 @@ bool SDCard_DeInit(void)
     }
     status = SDCARD_BUSY;
     FRESULT value = (FRESULT)sd_unmount();
-    if (value == FR_OK) { mounted = false; file_open = false; }
+    if (value == FR_OK) {
+        mounted = false;
+        file_open = false;
+        card_initialized = 0;
+        memset(&file, 0, sizeof(file));
+    }
     /* Explicit recovery discards stale handles, but reports unflushed data. */
     return result(closed == FR_OK ? value : closed);
 }

@@ -27,6 +27,8 @@ selected application. Configure and build presets are paired:
 | Release | `Core/Src/apps/FlightApp.c` | `build/Release/flight.elf` |
 | TestTemplate | `Tests/test_template.c` | `build/TestTemplate/test_template.elf` |
 | TestSD | `Tests/test_sd.c` | `build/TestSD/test_sd.elf` |
+| TestSDText | `Tests/test_sd_text.c` | `build/TestSDText/test_sd_text.elf` |
+| TestSPI | `Tests/testspi.c` | `build/TestSPI/test_spi.elf` |
 | TestSensors | `Tests/test_sensors.c` | `build/TestSensors/test_sensors.elf` |
 | TestGNSS | `Tests/test_gnss.c` | `build/TestGNSS/test_gnss.elf` |
 | TestXBee | `Tests/test_xbee.c` | `build/TestXBee/test_xbee.elf` |
@@ -36,6 +38,9 @@ verifies the contents. It prints PASS/FAIL, stage, FatFs result, and filename;
 `status` repeats the result without rerunning the test. Debugger variables remain
 available. It does not overwrite existing files.
 See [SD integration and test instructions](../Docs/SDCard.md).
+
+`TestSPI` sends sentences to an Arduino Uno SPI slave and checks a delayed-byte
+echo, bypassing the SD driver. See [SPI wiring, Uno sketch and test instructions](../Docs/SPI_Test.md).
 
 `TestSensors` polls BMP280, AHT20 (humidity only), BMI270, and IIS2MDC on I2C2.
 It prints temperature/pressure, humidity, acceleration/angular rate, and magnetic

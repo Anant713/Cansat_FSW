@@ -25,7 +25,7 @@ set(CMAKE_PROJECT_NAME Documents)
 
 # Select exactly one application entry point and its explicit dependencies.
 set(FIRMWARE_APP "flight" CACHE STRING "Firmware application to build")
-set_property(CACHE FIRMWARE_APP PROPERTY STRINGS flight test_template test_sd test_sensors test_gnss test_xbee test_camera)
+set_property(CACHE FIRMWARE_APP PROPERTY STRINGS flight test_template test_sd test_sd_text test_spi test_sensors test_gnss test_xbee test_camera test_servos test_switches)
 
 if(FIRMWARE_APP STREQUAL "flight")
     set(FIRMWARE_SOURCES
@@ -47,6 +47,10 @@ elseif(FIRMWARE_APP STREQUAL "test_template")
     )
 elseif(FIRMWARE_APP STREQUAL "test_sd")
     set(FIRMWARE_SOURCES Tests/test_sd.c)
+elseif(FIRMWARE_APP STREQUAL "test_sd_text")
+    set(FIRMWARE_SOURCES Tests/test_sd_text.c)
+elseif(FIRMWARE_APP STREQUAL "test_spi")
+    set(FIRMWARE_SOURCES Tests/testspi.c)
 elseif(FIRMWARE_APP STREQUAL "test_sensors")
     set(FIRMWARE_SOURCES Tests/test_sensors.c)
 elseif(FIRMWARE_APP STREQUAL "test_gnss")
@@ -55,9 +59,13 @@ elseif(FIRMWARE_APP STREQUAL "test_xbee")
     set(FIRMWARE_SOURCES Tests/test_xbee.c)
 elseif(FIRMWARE_APP STREQUAL "test_camera")
     set(FIRMWARE_SOURCES Tests/test_camera.c Core/Src/apps/CameraControl.c)
+elseif(FIRMWARE_APP STREQUAL "test_servos")
+    set(FIRMWARE_SOURCES Tests/test_servos.c)
+elseif(FIRMWARE_APP STREQUAL "test_switches")
+    set(FIRMWARE_SOURCES Tests/test_switches.c)
 else()
     message(FATAL_ERROR
-        "Unknown FIRMWARE_APP '${FIRMWARE_APP}'. Choose flight, test_template, test_sd, test_sensors, test_gnss or test_xbee.")
+        "Unknown FIRMWARE_APP '${FIRMWARE_APP}'. Choose flight, test_template, test_sd, test_sd_text, test_spi, test_sensors, test_gnss, test_xbee, test_camera, test_servos or test_switches.")
 endif()
 
 # Enable compile command to ease indexing with e.g. clangd

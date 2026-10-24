@@ -41,7 +41,9 @@ void Console_Process(void)
  * HAL error dispatcher: HAL can clear ErrorCode before returning. */
 void USART3_IRQHandler(void)
 {
-    if (huart3.Instance->SR & (USART_SR_PE | USART_SR_FE | USART_SR_NE | USART_SR_ORE)) {
+    uint32_t errors = huart3.Instance->SR & (USART_SR_PE | USART_SR_FE | USART_SR_NE | USART_SR_ORE);
+    if (errors) {
+        console_diagnostics.last_rx_error_flags = errors;
         ++console_diagnostics.rx_errors;
         rx_lost = true;
     }
@@ -53,6 +55,7 @@ void USART3_IRQHandler(void)
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *uart)
 {
     if (uart != &huart3) return;
+    ++console_diagnostics.rx_received_bytes;
     if (rx_lost || (uint32_t)(rx_head - rx_tail) >= CONSOLE_RX_SIZE) {
         ++console_diagnostics.rx_dropped_bytes;
         rx_lost = true;
@@ -126,6 +129,7 @@ ConsoleLineResult Console_ReadLine(char *line, size_t capacity)
             memcpy(line, line_buffer, line_length);
             line[line_length] = '\0';
             line_length = 0;
+            ++console_diagnostics.completed_lines;
             return CONSOLE_LINE_READY;
         }
         if (discard_line) continue;

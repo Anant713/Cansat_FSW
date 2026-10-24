@@ -16,7 +16,7 @@ static float clamp_angle(float angle)
 
 static uint32_t pulse_us(float angle)
 {
-    return (uint32_t)(500.0f + angle * (1900.0f / 180.0f) + 0.5f);
+    return (uint32_t)(500.0f + angle * (2000.0f / 180.0f) + 0.5f);
 }
 
 static void load_angles(void)

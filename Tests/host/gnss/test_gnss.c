@@ -92,6 +92,19 @@ static void test_parser(void)
     }
     message(velocity); CHECK(GNSS_GetData(&data) && data.speedValid && data.courseValid);
     near(data.speed, 10.2/3.6); near(data.course, 54.7);
+    /* Exact hardware capture: valid checksum, all fields empty, mode N.
+     * It must clear previously valid velocity rather than count as malformed. */
+    const char unavailable[] = "$GPVTG,,,,,,,,,N*30\r\n";
+    uint32_t good_vtg = stats().goodVtg, malformed = stats().malformed;
+    input(unavailable, sizeof(unavailable)-1, true); GNSS_Process();
+    CHECK(stats().goodVtg == good_vtg+1 && stats().malformed == malformed);
+    CHECK(GNSS_GetData(&data) && !data.vtgValid && !data.speedValid && !data.courseValid);
+    near(data.speed, 0); near(data.course, 0);
+    message("GPVTG,,,,,,,,,A"); /* missing units cannot claim valid navigation */
+    message("GPVTG,054.7,X,,M,005.5,N,010.2,K,A");
+    CHECK(stats().malformed == malformed+2 && stats().goodVtg == good_vtg+1);
+    message(velocity);
+    CHECK(GNSS_GetData(&data) && data.speedValid && data.courseValid);
     message("GNGGA,235960.125,3350.000,S,15112.000,W,2,12,1.0,-12.5,M,0,M,,");
     CHECK(GNSS_GetData(&data) && data.fixValid); near(data.latitude, -33.8333333333); near(data.longitude,-151.2);
     CHECK(data.utcTime == 235960); near(data.altitude,-12.5);
