@@ -1,5 +1,8 @@
 # Attitude bench tests
 
+See [FLIGHT_TEST_VALIDATION.md](FLIGHT_TEST_VALIDATION.md) for the separate
+cross-subsystem assumption register and drone-drop data requirements.
+
 Status: the Fusion application is integrated and its deterministic host checks
 pass. Physical bench tests, replay of actual flight logs, and drone drops remain
 pending. The user approved initial bench values: gain 0.5, accel/mag rejection

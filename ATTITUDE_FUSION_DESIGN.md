@@ -113,6 +113,9 @@ indefinite rejection. Configure settings explicitly.
 
 ## Verification and drop data
 
+The separate [flight validation register](FLIGHT_TEST_VALIDATION.md) tracks
+attitude/sensor assumptions, required evidence and limits of the planned drops.
+
 Detailed proposed procedure: [ATTITUDE_BENCH_TESTS.md](ATTITUDE_BENCH_TESTS.md).
 No hardware bench or drone-drop results have yet been collected in this work.
 Host tests cover known tilted pose with nonzero declination, positive and

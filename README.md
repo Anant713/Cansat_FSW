@@ -13,6 +13,11 @@ integrated into the portable attitude module. Desktop checks establish software
 behavior, not flight accuracy. Hardware bench and drone-drop testing have not
 been performed here.
 
+[FLIGHT_TEST_VALIDATION.md](FLIGHT_TEST_VALIDATION.md) is the separate register
+of assumptions, required drone-drop data, identification tasks, and validation
+limits. Update it as new design assumptions are introduced and link results to
+specific runs; approved design choices are not automatically flight-validated.
+
 Architecture, algorithms, interfaces, thresholds, and recovery behavior must
 be discussed with the project owner before implementation. Routine drivers
 and low-level implementation can proceed within the agreed design.
@@ -118,8 +123,10 @@ MIT license under third_party/Fusion. This uses upstream's standard square-root
 option without changing upstream sources. No additional loop or scheduler is
 required: keep one DcsAttitudeState and update it for each new gyro sample.
 
-Hardware bench testing is deferred for now. The wind model is retained; discuss
-wind freshness and its use by guidance next. Guidance, control, brake
+Hardware bench testing is deferred for now. The wind model and full guidance
+phase sequence are agreed. [GUIDANCE_DESIGN.md](GUIDANCE_DESIGN.md) records the
+sequence and pending transition, wind-fallback, and planning decisions.
+Guidance, control, brake
 allocation, and servo integration remain work
 to do; none of these modules drives servos.
 

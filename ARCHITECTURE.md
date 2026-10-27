@@ -17,6 +17,10 @@ The current CAN-7USAT flight-software architecture uses a cooperative super-loop
 
 ## 2. Architecture Status
 
+FLIGHT_TEST_VALIDATION.md separately tracks assumptions requiring drone-drop,
+bench, or replay evidence. Maintain it as the design evolves. An architectural
+decision or a host test does not close its flight-validation entry.
+
 Current checkpoint: portable navigation, wind, and a Fusion attitude
 estimator exist with desktop tests. Fusion replaces the provisional custom
 attitude filter. Hardware bench and drop-test results are pending. The
@@ -843,6 +847,21 @@ These should be added only when simulation or test data demonstrates a need.
 ---
 
 # 23. Next Architecture Topic
+
+The project owner approved the full descent sequence: deployed/stabilized
+readiness, path generation, transit to the energy-management point, height
+evaluation, optional loiter and reconnection, final approach, insufficient-height
+direct-to-target fallback, and terminal flare. GUIDANCE_DESIGN.md records that
+decision and the application details still requiring discussion. No planner or
+guidance implementation is implied by this phase-level approval.
+
+The fallback final-approach bearing defaults to the current position-to-target
+direction at plan generation, held for that plan; a manual bearing override is
+available as a design option. Fresh strong wind selects an into-wind approach;
+fresh weak wind uses the fallback bearing with measured wind compensation.
+Missing/stale wind uses the fallback and an explicit zero-wind planning
+assumption. GUIDANCE_DESIGN.md records these approved decisions; thresholds and
+remaining transition rules are still to be agreed.
 
 **Next: trajectory representation and path-manager design.**
 
