@@ -17,9 +17,9 @@ The current CAN-7USAT flight-software architecture uses a cooperative super-loop
 
 ## 2. Architecture Status
 
-Current checkpoint: portable navigation, wind, and a provisional custom attitude
-estimator exist with desktop tests. Fusion is selected to replace the attitude
-filter but is not integrated. Bench and drop-test results are pending. The
+Current checkpoint: portable navigation, wind, and a Fusion attitude
+estimator exist with desktop tests. Fusion replaces the provisional custom
+attitude filter. Hardware bench and drop-test results are pending. The
 application proposal and test procedure are in ATTITUDE_FUSION_DESIGN.md and
 ATTITUDE_BENCH_TESTS.md.
 
@@ -267,9 +267,12 @@ After conversion into the local frame, single-precision floating-point values ar
 
 **Status: Provisional pending parafoil-payload flight data**
 
-Fusion has been selected as the attitude filter. The current dcs_attitude code
-still uses the earlier custom filter; replacement awaits agreement on the
-application behavior proposed in ATTITUDE_FUSION_DESIGN.md.
+Fusion is integrated as the attitude filter using unchanged upstream revision
+a8d7224f36a0ec82345ef49a3db50e65f8d3bab8. The user approved configurable initial
+bench settings: acceleration band 0.8-1.2 g, gain 0.5, accel/mag angular rejection
+10 degrees, recovery timeout 5 s, and upstream recovery for admitted references.
+These settings are not validated flight parameters. ATTITUDE_FUSION_DESIGN.md
+describes the wrapper, retained provisional policies, and diagnostics.
 
 The reaction wheel has been descoped. Attitude estimation exists to support
 DCS, regardless of which flight-software module owns its implementation.
@@ -326,11 +329,17 @@ not an established sensor measurement.
 
 ## 9.1 Navigation Philosophy
 
-**Status: Provisional**
+**Status: GNSS velocity hold selected for V1**
 
 GNSS updates more slowly than the desired navigation and control execution rates.
 
 A translational propagator is therefore used between GNSS fixes.
+
+The project owner selected retaining the current baseline: replace horizontal
+position and velocity on each accepted GNSS fix, then hold that velocity while
+the fix remains fresh to propagate position between fixes. No turn-aware or
+attitude-derived horizontal velocity propagation is added for V1. Numerical
+freshness limits and actual turn accuracy still require validation.
 
 Only translational quantities are propagated in V1.
 
@@ -389,7 +398,11 @@ the operational vertical position relative to the target ground level.
 
 # 11. Horizontal Velocity Propagation
 
-**Status: Provisional pending flight data**
+**Status: GNSS velocity hold selected for V1; parafoil model is provisional**
+
+The implemented V1 propagator uses the last accepted GNSS North/East ground
+velocity until its configured age limit. The equations below describe the
+alternative parafoil model; they are not the selected V1 navigation propagator.
 
 The reduced parafoil model estimates horizontal velocity from:
 
@@ -529,6 +542,16 @@ The better-performing approach may later be incorporated into the operational es
 ## 14.1 Wind Measurement
 
 **Status: Frozen**
+
+The project owner agreed to retain the existing model for V1: configured
+constant horizontal airspeed, payload heading as the provisional canopy proxy,
+straight-flight gating, and EMA filtering. Airspeed, gate thresholds, and EMA
+coefficient remain configurable; their numerical flight values are not selected.
+The approved wind freshness interface is implemented: last_update_ms records
+the GNSS measurement timestamp of the last accepted wind update. Rejected
+measurements do not refresh it. Check has_estimate before computing age; a zero
+timestamp or zero wind vector can be valid. Expiry limits and guidance fallback
+behavior remain to be agreed; the estimator does not expire its own output.
 
 Wind is calculated only when a fresh GNSS ground-velocity measurement is available.
 

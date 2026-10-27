@@ -1,11 +1,20 @@
 # Attitude bench tests
 
-Status: proposed procedure for the Fusion-based application after integration.
-The current custom-filter desktop tests do not verify Fusion. Hardware tests,
-replay tests of the integrated Fusion adapter, and drone drops remain pending.
-Starting gains, rejection thresholds, recovery behavior, and the acceleration
-magnitude band require agreement before implementation. Do not treat proposed
-values in ATTITUDE_FUSION_DESIGN.md as validated flight settings.
+Status: the Fusion application is integrated and its deterministic host checks
+pass. Physical bench tests, replay of actual flight logs, and drone drops remain
+pending. The user approved initial bench values: gain 0.5, accel/mag rejection
+10 degrees, recovery timeout 5 s, and accel magnitude band 0.8-1.2 g. These are
+configurable test settings, not validated flight settings.
+
+Run the integrated deterministic checks with:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tests/run_host_tests.ps1
+```
+
+The script builds/runs all three modules. The attitude cases implement the
+synthetic-input checks below against the actual Fusion adapter. No bench-test
+data logger or CSV replay application is claimed by these host checks.
 
 ## Equipment and recording
 
@@ -69,7 +78,7 @@ timestamps. Reset to the known pose between independent cases.
 | Case | Expected observation |
 | --- | --- |
 | Duplicate timestamp | No extra integration or state reset |
-| Near-zero acceleration with small noise | Proposed magnitude check withholds tilt correction |
+| Near-zero acceleration with small noise | Magnitude check withholds tilt correction |
 | Acceleration outside the agreed magnitude band | Tilt correction withheld; gyro propagation continues |
 | 1 g vector tilted 30 degrees from the expected reference, briefly applied | Magnitude check passes; angular rejection initially withholds correction when configured below 30 degrees |
 | Same inconsistent vector held past the recovery timeout | Recovery eventually permits correction; record orientation error and recovery timing |
@@ -109,4 +118,4 @@ configuration for the planned drone drops from 100 m and subsequent replay.
 - [Fusion documentation](https://github.com/xioTechnologies/Fusion)
 - [Fusion update and recovery implementation](https://github.com/xioTechnologies/Fusion/blob/main/Fusion/FusionAhrs.c)
 
-These links identify reviewed source locations. Pin a revision when integrating.
+The integrated revision is pinned in third_party/Fusion/UPSTREAM.json.

@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "third_party/Fusion/Fusion/FusionAhrs.h"
 
 typedef struct {
     float x;
@@ -22,9 +23,14 @@ typedef struct {
     float initial_roll_rad;
     float initial_pitch_rad;
     float initial_heading_rad;
-    float accel_gain_per_s;
-    float mag_gain_per_s;
-    float max_accel_error_mps2;
+    float sample_rate_hz;
+    float gyro_range_deg_s;
+    float gain;
+    float accel_rejection_deg;
+    float mag_rejection_deg;
+    float recovery_timeout_s;
+    float min_accel_g;
+    float max_accel_g;
     float calibrated_mag_strength;
     float max_mag_relative_error;
     float magnetic_declination_rad;
@@ -46,6 +52,8 @@ typedef struct {
 } DcsAttitudeSample;
 
 typedef struct {
+    /* Persistent private engine state. Uses magnetic NED internally. */
+    FusionAhrs fusion;
     DcsQuaternion body_to_ned;
     float payload_heading_rad;
     float payload_heading_rate_rad_s;
@@ -53,6 +61,14 @@ typedef struct {
     bool heading_valid;
     bool accel_correction_used;
     bool mag_correction_used;
+    bool accel_reference_available;
+    bool mag_reference_available;
+    float accel_error_deg;
+    float mag_error_deg;
+    bool accel_recovery;
+    bool mag_recovery;
+    bool gyro_overrange_recovery;
+    bool fusion_startup;
     uint32_t last_sample_ms;
     uint32_t last_heading_reference_ms;
     bool initialized;
@@ -70,6 +86,11 @@ typedef struct {
  * Magnetometer correction may likewise be disabled during known interference.
  * The quaternion rotates body vectors into North/East/Down coordinates.
  * This estimates PAYLOAD orientation, not canopy orientation.
+ * The gyro timestamp identifies a NEW IMU sample, not a super-loop iteration.
+ * Accel accompanies that IMU sample. The caller supplies the latest sufficiently
+ * fresh mag vector and clears mag_valid when it becomes stale; there is no
+ * independent mag-age check in this interface. Keep config unchanged after init.
+ * Compile wrapper and Fusion with FUSION_USE_NORMAL_SQRT (see build instructions).
  */
 /*
  * Initialize once from the known pose at system_time_ms. Run continuously
@@ -77,6 +98,9 @@ typedef struct {
  * A repeated update timestamp returns false and leaves the state unchanged.
  * An excessive time gap invalidates the estimate and requires explicit init
  * with a known CURRENT pose; never restore the launch-pad pose during flight.
+ * Validity means the estimate is available under the existing timestamp and
+ * heading-reference policy; it is not an accuracy bound. Inspect recovery and
+ * overrange flags too. Heading retains its last value when geometrically invalid.
  */
 bool dcs_attitude_init(DcsAttitudeState *state,
                        const DcsAttitudeConfig *config,

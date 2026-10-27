@@ -115,6 +115,7 @@ bool dcs_wind_update(DcsWindState *state, const DcsWindConfig *config,
     state->east_mps += config->ema_alpha *
                        (measured_east_mps - state->east_mps);
     state->has_estimate = true;
+    state->last_update_ms = fix->system_time_ms;
 
     return true;
 }

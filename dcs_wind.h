@@ -35,6 +35,8 @@ typedef struct {
     float north_mps;
     float east_mps;
     bool has_estimate;
+    /* Measurement timestamp of last accepted wind update; use only if has_estimate. */
+    uint32_t last_update_ms;
     bool has_previous_course;
     uint32_t previous_gnss_epoch_ms;
     uint32_t previous_fix_system_time_ms;
@@ -51,6 +53,9 @@ bool dcs_wind_init(DcsWindState *state, const DcsWindConfig *config);
  * to canopy heading is established by flight testing. Never feed this estimate
  * back as a substitute for a valid GNSS ground-velocity measurement.
  * Returns true when a wind measurement passes all gates and is EMA-weighted.
+ * Only accepted updates refresh last_update_ms, using fix->system_time_ms.
+ * No automatic expiry is applied. Consumers can compute age as unsigned
+ * now_ms - last_update_ms; has_estimate distinguishes missing from zero wind.
  * The driver must supply GNSS fixes in chronological order.
  */
 bool dcs_wind_update(DcsWindState *state, const DcsWindConfig *config,
