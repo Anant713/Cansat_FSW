@@ -17,6 +17,19 @@ The current CAN-7USAT flight-software architecture uses a cooperative super-loop
 
 ## 2. Architecture Status
 
+Current checkpoint: portable navigation, wind, and a provisional custom attitude
+estimator exist with desktop tests. Fusion is selected to replace the attitude
+filter but is not integrated. Bench and drop-test results are pending. The
+application proposal and test procedure are in ATTITUDE_FUSION_DESIGN.md and
+ATTITUDE_BENCH_TESTS.md.
+
+The status labels below record the evolving design, not permission to make new
+architectural decisions without discussion. Algorithms, interfaces, thresholds,
+and recovery policies must be agreed with the project owner before changes.
+Existing ADCS/DCS FSW interfaces remain preliminary. Integration must support
+one-time initialization, bounded super-loop updates, persistent estimator state,
+and measurement timestamps without imposing a separate scheduler.
+
 The architecture is divided into three categories.
 
 ### Frozen
@@ -127,9 +140,9 @@ Board-specific code will provide:
 
 **Status: Frozen**
 
-System time is the primary timebase used by DCS.
-
-It is supplied by the main flight software using the system RTC/timekeeping infrastructure.
+Elapsed time is supplied to DCS by the main flight software as a monotonic
+millisecond counter. RTC calendar time may be used for mission timestamps but
+must not be used to calculate propagation or control time steps.
 
 System time is used for:
 
@@ -241,7 +254,7 @@ The DCS receives processed quantities including:
 - altitude,
 - ground speed,
 - course over ground,
-- Down velocity, assuming it can be obtained reliably,
+- optional GNSS Down velocity for comparison with barometric vertical motion,
 - GNSS time.
 
 Latitude and longitude should use sufficient precision for geodetic conversion.
@@ -250,24 +263,62 @@ After conversion into the local frame, single-precision floating-point values ar
 
 ---
 
-# 8. ADCS Interface
+# 8. Attitude Support Interface
 
-**Status: Frozen**
+**Status: Provisional pending parafoil-payload flight data**
 
-ADCS owns attitude estimation.
+Fusion has been selected as the attitude filter. The current dcs_attitude code
+still uses the earlier custom filter; replacement awaits agreement on the
+application behavior proposed in ATTITUDE_FUSION_DESIGN.md.
 
-DCS consumes only the quantities required for guidance and control:
+The reaction wheel has been descoped. Attitude estimation exists to support
+DCS, regardless of which flight-software module owns its implementation.
+Attitude estimation operates throughout the flight, beginning on the launch
+pad, rather than starting only when secondary DCS becomes active. Activating
+secondary DCS must not itself reset the attitude estimate. The launch-pad
+attitude is supplied as initial roll, pitch, and geographic heading with its
+timestamp. The estimator starts directly from that pose without reconstructing
+it from accelerometer or magnetometer measurements. The known pose provides the
+initial heading reference; accepted magnetometer corrections refresh it.
+Repeated timestamps are ignored without resetting the estimate. The existing
+heading-reference timeout and excessive-gap recovery policy remain provisional.
+Flight software owns sensor calibration, including any prelaunch calibration
+command, and supplies calibrated gyro, accelerometer, and magnetometer vectors
+to the attitude module. The attitude module applies no calibration matrices or
+bias corrections. Its current interface requires payload forward/right/down
+axes; responsibility for sensor-to-body axis mapping must be confirmed at
+integration.
 
-- geographic heading $\psi$,
-- heading rate $r$.
+The calibration owner must check bias repeatability across power cycles for
+the gyro, accelerometer, and magnetometer. Record each bias estimate, sensor
+temperature, time since power-on, and the hardware/software offset settings
+under comparable stationary test conditions. For the magnetometer, keep the
+orientation and magnetic environment controlled. Use these results to establish
+whether stored calibration remains valid after restart and how much settling
+time is needed. Prelaunch calibration behavior belongs to flight software.
 
-The DCS will not initially:
+The BMI270 gyroscope and accelerometer, together with the IIS2MDC
+magnetometer, can estimate the payload's orientation. They do not directly
+measure parafoil-canopy orientation. The attitude interface supplies:
 
-- propagate attitude independently,
-- run full rotational dynamics,
-- estimate attitude from raw IMU measurements.
+- estimated payload geographic heading and heading rate,
+- a monotonic measurement timestamp,
+- validity/quality information.
 
-The latest available ADCS heading is used whenever required by the DCS.
+The heading used in the parafoil model is the air-relative canopy-forward
+direction. Payload heading is only a candidate proxy for this quantity.
+Oscillation, twisting, mean offset, and turn-response lag will be studied in
+flight tests. A raw payload body-axis gyro channel is not assumed to equal
+geographic heading rate.
+
+An attitude estimator may maintain a quaternion internally to combine gyro,
+accelerometer, and magnetometer data; DCS guidance needs only the resulting
+horizontal direction and rate. Accelerometer tilt corrections must be reduced
+or rejected during strong non-gravitational acceleration.
+
+No heading sample is used without checking its validity and age. The mapping
+from payload heading to canopy heading remains an explicit model assumption,
+not an established sensor measurement.
 
 ---
 
@@ -275,7 +326,7 @@ The latest available ADCS heading is used whenever required by the DCS.
 
 ## 9.1 Navigation Philosophy
 
-**Status: Frozen**
+**Status: Provisional**
 
 GNSS updates more slowly than the desired navigation and control execution rates.
 
@@ -283,7 +334,9 @@ A translational propagator is therefore used between GNSS fixes.
 
 Only translational quantities are propagated in V1.
 
-Heading and heading rate remain ADCS-derived quantities.
+Heading and heading rate are payload estimates until flight data establishes
+whether they can represent canopy motion. GNSS course over ground is retained
+as a distinct measurement of motion over the ground.
 
 ---
 
@@ -304,9 +357,10 @@ Estimated ground velocity:
     V_east
     V_down
 
-Latest ADCS data:
-    heading
-    heading_rate
+Latest attitude support data:
+    payload_heading
+    payload_heading_rate
+    validity and age
 ```
 
 The navigation state must not derive velocity by differentiating corrected position.
@@ -315,29 +369,32 @@ The navigation state must not derive velocity by differentiating corrected posit
 
 # 10. GNSS Navigation Update
 
-**Status: Frozen**
+**Status: Provisional**
 
 Whenever a fresh GNSS fix is received:
 
-1. Convert GNSS latitude, longitude, and altitude to local Cartesian coordinates.
-2. Override the propagated position with GNSS position.
+1. Validate the fix and convert GNSS latitude and longitude to local North/East.
+2. Override the propagated horizontal position with GNSS position.
 3. Store the measured GNSS ground velocity.
-4. Update the wind estimator using GNSS ground velocity and the latest available heading.
+4. Offer the sample to the gated wind estimator with a recent, valid payload
+   heading; its output remains provisional while canopy-heading alignment is
+   unverified.
 5. Override the current velocity estimate with the trusted GNSS velocity.
 6. Continue propagation from the corrected state.
 
-GNSS therefore acts as the absolute measurement source for position and velocity.
+GNSS supplies horizontal position and velocity. Barometric measurements supply
+the operational vertical position relative to the target ground level.
 
 ---
 
 # 11. Horizontal Velocity Propagation
 
-**Status: Frozen**
+**Status: Provisional pending flight data**
 
-Between GNSS updates, horizontal velocity is estimated from:
+The reduced parafoil model estimates horizontal velocity from:
 
 - calibrated horizontal airspeed,
-- latest ADCS heading,
+- canopy heading or a validated proxy,
 - current wind estimate.
 
 The horizontal model is:
@@ -357,7 +414,7 @@ $$
 where:
 
 - $V_{ah}$ is calibrated horizontal airspeed,
-- $\psi$ is latest geographic heading,
+- $\psi$ is geographic canopy heading in the model,
 - $\hat W_N$ is estimated North wind component,
 - $\hat W_E$ is estimated East wind component.
 
@@ -375,19 +432,27 @@ y_{k+1}
 y_k + V_{E,\mathrm{est}}\Delta t
 $$
 
-These relations follow the reduced parafoil kinematic model.
+These relations follow the reduced parafoil kinematic model. They must not be
+used as the sole operational propagator until payload heading is shown to be a
+usable proxy. A bounded hold of the latest valid GNSS ground velocity provides
+a simple initial between-fix propagation path.
 
 ---
 
 # 12. Vertical Propagation
 
-## 12.1 Initial Approach
+## 12.1 Barometric Vertical Navigation
 
-**Status: Frozen for V1 assumption**
+**Status: Selected for V1; calibration and thresholds TBD**
 
-For the initial firmware implementation, it is assumed that a usable Down-velocity measurement can be obtained from the GNSS receiver.
+The BMP280 pressure measurement is the primary source for vertical navigation,
+deployment, and terminal-height decisions. The flight software converts it to
+height above the target ground reference and supplies validity and a monotonic
+timestamp. A launch-site GNSS altitude calibration alone does not establish
+the target-ground elevation if the two sites differ.
 
-Vertical propagation is therefore:
+Between new barometric samples, a bounded propagation may use an estimated
+Down velocity:
 
 $$
 z_{k+1}
@@ -395,19 +460,17 @@ z_{k+1}
 z_k + V_D\Delta t
 $$
 
-where $V_D$ is the latest measured Down velocity.
+where $V_D$ is a validated sink-rate estimate. The filter setting and sensor
+installation delay must be checked for deployment and flare timing.
 
 ---
 
-## 12.2 Barometric Vertical Navigation
+## 12.2 GNSS Vertical Velocity
 
-**Status: Future**
+**Status: Optional cross-check**
 
-Barometric altitude and/or vertical-velocity estimation may later be incorporated after:
-
-- sensor testing,
-- literature review,
-- characterization of GNSS vertical performance.
+GNSS Down velocity may be logged and compared with barometric vertical motion,
+but is not assumed to be the V1 operational vertical source.
 
 ---
 
@@ -483,7 +546,8 @@ W_E
 V_{g,E}^{GNSS} - V_{ah}\sin\psi
 $$
 
-The latest available ADCS heading is used.
+The latest recent, valid payload heading is used as a provisional canopy proxy.
+This measurement is not independently verified by the wind EMA.
 
 The wind estimator must never use propagated velocity as its measurement input.
 
@@ -568,43 +632,31 @@ previous GNSS system time
 
 ## 17.1 Initial Implementation
 
-**Status: TBD**
+**Status: Selected for V1; coefficient TBD**
 
-The initial implementation may use direct hard-gated updates:
-
-$$
-\hat{\mathbf W}
-=
-\mathbf W_{\mathrm{measurement}}
-$$
-
-whenever all gates pass.
-
-This avoids adding filtering before test data demonstrates that filtering is required.
-
----
-
-## 17.2 Optional EMA
-
-**Status: Future / TBD after testing**
-
-If GNSS-derived wind proves noisy, an exponential moving average may be added:
+The CDR filters accepted wind measurements to reduce the effect of payload
+oscillation on the wind estimate:
 
 $$
 \hat{\mathbf W}_k
 =
-\alpha \mathbf W_k
-+
-(1-\alpha)\hat{\mathbf W}_{k-1}
+\alpha\mathbf W_{\mathrm{measurement},k}
++(1-\alpha)\hat{\mathbf W}_{k-1}
 $$
 
-A single scalar $\alpha$ will initially be used for both horizontal components.
+The estimate starts at zero wind and the first accepted measurement is also
+EMA-weighted. A single scalar
+$\alpha$ is used for both horizontal components and remains configurable.
+Rejected samples leave the estimate unchanged.
+
+This filter does not remove an unknown persistent payload-to-canopy heading
+offset and does not provide a filtered heading for the control loop.
 
 ---
 
 # 18. Initial Wind State
 
-**Status: Frozen**
+**Status: Provisional**
 
 Before the first accepted wind measurement:
 
@@ -725,7 +777,7 @@ Convert position to local NED
   |
   +--> Store trusted GNSS velocity
   |
-  +--> Update wind estimate
+  +--> Offer sample to gated wind EMA
   |
   +--> Override estimated velocity
 ```
@@ -733,17 +785,13 @@ Convert position to local NED
 Between GNSS updates:
 
 ```text
-Latest ADCS heading
-        +
-Calibrated Vah
-        +
-Current wind estimate
+Latest valid GNSS ground velocity
         |
         v
-Estimate horizontal ground velocity
+Bounded horizontal propagation
         |
         +
-Latest measured Down velocity
+Barometric height / validated sink estimate
         |
         v
 Propagate Cartesian position
@@ -759,12 +807,11 @@ The following are deliberately excluded from the first implementation.
 
 - full inertial navigation,
 - Kalman filtering,
-- independent heading propagation,
+- canopy-mounted operational attitude sensing,
 - full rotational dynamics,
 - GNSS/ADCS delayed-measurement synchronization,
 - backward propagation to measurement epochs,
-- barometric sensor fusion,
-- detailed degraded-mode handling,
+- detailed degraded-mode optimization beyond basic stale-data checks,
 - turn-based wind estimation,
 - IMU-assisted operational velocity estimation.
 
