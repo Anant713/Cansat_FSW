@@ -1,8 +1,9 @@
 # Trajectory planning and guidance discussion
 
 Status: the project owner approved the full phase sequence below. Transition
-conditions, numerical thresholds, exact APIs, and remaining fallback policies
-require discussion before implementation. No planning or guidance code exists.
+conditions, numerical thresholds and remaining fallback policies require
+discussion before implementation. Dubins geometry is implemented; complete
+planning, path management and guidance remain unimplemented.
 
 Record flight-dependent assumptions and required evidence in
 [FLIGHT_TEST_VALIDATION.md](FLIGHT_TEST_VALIDATION.md). In particular, the 20%
@@ -44,11 +45,11 @@ heading as the provisional canopy-heading proxy.
 Apply these decisions when generating a plan, rather than changing approach
 direction on every guidance update:
 
-- Fresh, sufficiently strong wind: final approach points into the wind, and
+- An available strong wind estimate: final approach points into the wind, and
   measured wind is used for compensation and traversal-time prediction.
-- Fresh but weak wind: use the fallback approach bearing while retaining the
+- An available weak wind estimate: use the fallback approach bearing while retaining the
   measured vector for compensation and traversal-time prediction.
-- Missing or stale wind: use the fallback bearing and an explicitly identified
+- No estimate obtained yet: use the fallback bearing and an explicitly identified
   zero-wind planning assumption. This assumption is not a measured calm wind.
 
 The default fallback bearing is from the current position to the target at
@@ -59,9 +60,10 @@ one. The bearing at the exact target is undefined and needs a terminal-case rule
 This selects the reserved final straight segment's direction, not an instruction
 to discard turn constraints. Connect the current ground-track configuration to
 the final-approach entry using the chosen feasible path. If height is insufficient,
-the agreed best-effort direct-to-target mode applies. Wind-age and weak-wind
-thresholds remain configurable values to agree; the estimator itself does not
-expire its output.
+the agreed best-effort direct-to-target mode applies. The weak-wind threshold
+remains unset. Retain the last accepted estimate without automatic expiry;
+age alone does not change the fallback mode or request reassessment. Keep the
+update timestamp for analysis. GNSS validity remains a separate concern.
 
 ## Agreed path representation
 
@@ -168,14 +170,174 @@ H_exit_to_approach therefore includes all remaining travel from the proposed
 loiter exit to the final-approach entry, including any reconnection. It is not
 limited to a short joining manoeuvre. H_final covers the final straight, and
 every remaining turn receives the agreed 20% turn-loss allowance. Reserve and
-height-classification tolerance settings still require discussion.
+height-classification tolerance settings still require discussion. The project
+owner suggested a 10-20 m reserve and 1.5-2% classification tolerance. Exact
+values and the percentage basis remain unset; 15 m and 2% of predicted remaining
+loss were proposals, not approved defaults. Straight-glide sink speed is also
+unknown and remains a required configuration input to determine later.
+
+## Reassessment before path replacement
+
+A trigger requests reassessment rather than unconditional path generation.
+Evaluate the remaining current route using updated position, ground course,
+height and wind. Include the travel needed to regain the route; do not evaluate
+the original route from its original starting point or assume instantaneous
+return to it.
+
+Retain the current plan if its remaining route is feasible and acceptable.
+Generate replacement candidates only when it fails that assessment, rather
+than searching repeatedly for a marginally better path. A wind-direction change
+alone does not force replacement: assess forward progress, remaining height
+budget, ability to regain the route and final-approach requirements first.
+No separate reconnection planner, tracking corridor or correction-height allowance
+has been approved for ordinary path deviation. How reassessment accounts for
+off-path recovery travel remains unresolved; the simple trigger rules below do
+not imply that recovery costs zero height.
+
+## Agreed horizontal and height-shortage triggers
+
+Keep the trigger interface simple, with two configurable distances in metres:
+
+- Horizontal error greater than X metres requests reassessment. Measure the
+  shortest North/East distance to the active straight or arc, not to the moving
+  LOS point and not to whichever segment is closest across the entire plan.
+  Retain the existing final-line continuation beyond the target; target passage
+  is handled separately by the agreed overrun event.
+- Height shortage greater than Y metres requests reassessment. This is the
+  shortfall of current target-relative height against predicted remaining height
+  loss plus reserve, rather than geometric distance from a prescribed 3D path.
+  In symbols, shortage = predicted_remaining_loss + reserve - current_height.
+  Positive shortage exceeding Y triggers the check; excess height alone does
+  not trigger it and remains handled at the energy-management point.
+
+X and Y have no selected numerical defaults. Y is a reassessment threshold in
+metres, distinct from the percentage tolerance used for height classification.
+Reassessment retains the current path if it still works; a threshold crossing
+does not itself force replacement or immediately command direct-to-target.
+
+## Agreed reassessment timing
+
+The following configurable initial test settings are approved:
+
+- Horizontal error must exceed X continuously for 1 second before requesting
+  reassessment.
+- Height shortage must exceed Y continuously for 1 second, using a separate
+  persistence timer.
+- Reset each persistence timer when its own condition clears. One condition
+  cannot inherit elapsed persistence from the other.
+- Allow at least 2 seconds between ordinary reassessments.
+- Target passage requests reassessment immediately, once per plan, bypassing
+  the ordinary interval. Retain the existing flare/overrun behavior.
+- Continue tracking the active path during assessment.
+
+These settings require flight/replay validation. X/Y values remain unset.
+Wind triggers use the timing below. These are design notes only; no planner,
+reassessment logic or timers have been implemented.
+
+## Wind-change threshold
+
+The project owner selected a 30% deviation threshold instead of an absolute
+wind-change threshold in m/s. For a nonzero reference vector, the discussed
+comparison is:
+
+    relative_change = magnitude(latest_wind - reference_wind) / magnitude(reference_wind)
+
+Request reassessment when relative_change > 0.30. This compares vectors, so
+direction changes as well as speed changes contribute. It requests assessment
+of current-path feasibility rather than unconditional replacement.
+
+The approved reference is the wind used at the last completed reassessment
+(initially the plan-generation wind), refreshed even if the path is retained.
+Use a separate 1-second continuous wind persistence timer, reset when the
+condition clears, and the ordinary 2-second reassessment interval.
+Percentage change is undefined for zero reference wind and sensitive for weak
+reference wind. The approved rule uses the existing weak-wind classification:
+skip percentage checks while both reference and latest usable estimates are
+weak; request reassessment when crossing between weak and strong wind. Apply
+the 30% vector comparison when both are strong. The weak-wind threshold remains
+unset. Do not invent a denominator floor or treat assumed zero wind as measured
+wind. Retain the last accepted estimate without expiry. Rejected measurements
+can occur with usable GNSS, so wind rejection is not equivalent to lost GNSS.
+Age alone does not request reassessment. Resumed accepted updates use the same
+percentage/classification rules. The first accepted wind estimate requests
+reassessment because it replaces the initial zero-wind assumption with measured
+information. No wind-trigger code exists.
+
+## Common simulation configuration
+
+The owner approved arbitrary dummy values for later simulation tests rather
+than selecting physical flight parameters now. dcs_config.h is the common
+configuration header: DCS_SIM_DUMMY_* names and comments explicitly identify
+placeholder radius, airspeed, sink rate, final length, energy-point offset, LOS
+look-ahead, X/Y thresholds and weak-wind threshold. Reserve/tolerance placeholders
+are also labelled dummy; the percentage basis still needs agreement before use.
+Agreed numerical test settings use DCS_TEST_* names separately. These constants
+are not wired into existing estimators and do not implement a planner. Keep
+planning and wind-estimator airspeed consistent when simulation is integrated.
+Dummy values are not evidence of physical feasibility, including whether a
+100 m drop can accommodate the configured route and any loiter.
+
+## Planner interface
+
+dcs_planner.h declares the agreed planner boundary; dcs_planner_generate has no
+implementation yet. DcsPlannerInput supplies current target-centred position,
+GNSS course, height and wind/availability. The planner selects the final course
+internally using the agreed override/strong-wind/fallback policy.
+DcsPlannerConfig supplies geometric and height-model parameters, the weak-wind
+threshold and optional manual course override. Dummy macros
+in dcs_config.h are not automatically applied to this structure.
+
+DcsPlannerOutput holds at most four tagged straight/arc segments, a path-distance
+energy marker and predicted time/height loss. Height loss includes the turn
+allowance but excludes the separately budgeted reserve. DcsPlannerResult
+distinguishes nominal approach, excess height, no feasible approach and invalid
+input. Insufficient height is a failure reason within no feasible approach,
+alongside wind infeasibility; it is not a separate feasibility category.
+Only nominal/excess results supply a normal route;
+the manager decides fallback/overrun behavior and retains its active plan until
+a replacement is accepted. Call into separate candidate storage.
+
+The percentage classification basis, numerical ranking tolerances, finite
+path-integration resolution and the short-Dubins case where the requested
+energy point lies before the path start still need agreement before the
+corresponding calculations are implemented. The interface accepts an absolute
+classification tolerance without silently selecting a percentage basis.
+
+## Implemented Dubins geometry
+
+dcs_dubins.h/.c constructs one requested family from start/goal position and
+ground course with a positive turn radius: LSL, RSR, LSR, RSL, RLR or LRL. This
+is also the fixed evaluation order for future tie-breaking. Each successful
+call returns three segment slots (zero-length segments can occur), geometric
+length and total absolute turning. Failure leaves output unchanged. The caller
+will evaluate all six; this layer does not select a candidate.
+
+Normalized equations are adapted from the primary
+[Andrew Walker Dubins-Curves implementation](https://github.com/AndrewWalker/Dubins-Curves/blob/master/src/dubins.c).
+Its MIT copyright and permission notice are preserved in dcs_dubins.c. The code
+reflects East for the standard mathematical equations, then emits native
+North/East geometry with positive right-turn sweeps. Float roundoff guards near
+touching/coincident circles are numerical handling, not physical tolerances.
+The implementation uses float math, fixed storage and a three-segment loop;
+there is no sampling loop dependent on route length and no dynamic allocation.
+
+Host checks cover straight and quarter-circle known lengths, coincident poses,
+touching/overlapping circles, impossible three-arc candidates, all-family pose
+closure, stored-geometry continuity, left/right mirror symmetry and invalid
+input/output preservation. Endpoint checking independently integrates the
+motion in double precision. These tests establish software geometry only,
+not a parafoil's achievable ground-track curvature or STM32 execution time.
+
+No final line, wind/height integration, candidate ranking, energy marker,
+reassessment, path manager or heading commands are implemented by this layer.
 
 ## Details to discuss next
 
-- Wind-age and weak-wind thresholds, and when wind/approach changes warrant a
-  replan. Preserve the chosen final bearing while following the current plan.
-- Replanning triggers, request persistence, and minimum interval. Expensive
-  candidate generation should not run on every guidance/controller update.
+- Replace simulation-only weak-wind and other physical placeholders using data.
+  Preserve the chosen final bearing while following the current plan.
+- X/Y values and off-path recovery-cost assessment. Expensive candidate
+  generation should not run on
+  every guidance/controller update.
 - Loiter exit: budget the exit/reconnection path and final approach before
   committing to further height loss. Partial-orbit reconnection can change the
   remaining height requirement.

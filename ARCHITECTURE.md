@@ -554,8 +554,9 @@ coefficient remain configurable; their numerical flight values are not selected.
 The approved wind freshness interface is implemented: last_update_ms records
 the GNSS measurement timestamp of the last accepted wind update. Rejected
 measurements do not refresh it. Check has_estimate before computing age; a zero
-timestamp or zero wind vector can be valid. Expiry limits and guidance fallback
-behavior remain to be agreed; the estimator does not expire its own output.
+timestamp or zero wind vector can be valid. Retain the last accepted wind without
+expiry or age-only reassessment. Keep the timestamp for logging and validation;
+GNSS validity remains separate.
 
 Wind is calculated only when a fresh GNSS ground-velocity measurement is available.
 
@@ -857,20 +858,40 @@ guidance implementation is implied by this phase-level approval.
 
 The fallback final-approach bearing defaults to the current position-to-target
 direction at plan generation, held for that plan; a manual bearing override is
-available as a design option. Fresh strong wind selects an into-wind approach;
-fresh weak wind uses the fallback bearing with measured wind compensation.
-Missing/stale wind uses the fallback and an explicit zero-wind planning
-assumption. GUIDANCE_DESIGN.md records these approved decisions; thresholds and
+available as a design option. An available strong estimate selects an into-wind
+approach; an available weak estimate uses fallback with measured compensation.
+Retain accepted wind without expiry. Before any estimate exists, use fallback
+with an explicit zero-wind planning assumption.
+GUIDANCE_DESIGN.md records these approved decisions; thresholds and
 remaining transition rules are still to be agreed.
 
-**Next: trajectory representation and path-manager design.**
+Path representation, segment/LOS progress, candidate ranking and the initial
+20% turning height-loss allowance are recorded in GUIDANCE_DESIGN.md. A request
+first reassesses the remaining current path; replacement generation is needed
+only if that path no longer works. Horizontal distance from the active path
+greater than X metres or remaining-height shortage greater than Y metres
+requests this check. These are configurable thresholds with no selected values.
+The height trigger uses the remaining height budget, not a prescribed 3D track.
 
-This includes:
+**Next: wind triggers, reassessment thresholds and remaining feasibility details.**
 
-- Dubins arc representation,
-- straight-segment representation,
-- final-approach segment,
-- energy-management point,
-- loiter representation,
-- active-segment tracking,
-- interaction between the planner and LOS guidance.
+Approved configurable initial test timing uses separate 1-second continuous
+persistence timers for horizontal error and height shortage, reset independently
+when their conditions clear, and a 2-second minimum ordinary reassessment
+interval. Target passage requests immediate reassessment once per plan and
+bypasses that interval. Active-path tracking continues during assessment.
+Wind changes use 30% vector deviation when both estimates are strong and
+weak/strong transitions otherwise, skipping percentage checks when both are
+weak. Use a separate 1-second persistence timer and the ordinary 2-second
+interval. Compare against wind at the last completed assessment (initially
+plan generation), refreshing that reference even when the path is retained.
+The first accepted wind estimate requests reassessment. Off-path recovery-cost
+assessment remains pending. Physical configuration values are not selected:
+dcs_config.h holds explicitly labelled simulation-only dummy parameters, separate
+from the agreed initial numerical test settings. These do not alter estimator
+configuration or implement a planner.
+dcs_dubins.h/.c now implements the six Dubins geometry families with fixed
+three-segment output and length/turn metrics. The planner interface selects
+final approach internally; insufficient height is a no-feasible-approach failure
+reason. Complete planner generation, guidance and reassessment remain
+unimplemented. See GUIDANCE_DESIGN.md for scope and host geometry validation.

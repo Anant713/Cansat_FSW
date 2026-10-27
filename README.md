@@ -22,6 +22,22 @@ Architecture, algorithms, interfaces, thresholds, and recovery behavior must
 be discussed with the project owner before implementation. Routine drivers
 and low-level implementation can proceed within the agreed design.
 
+[dcs_config.h](dcs_config.h) collects explicitly labelled simulation-only dummy
+planning/guidance parameters and the agreed initial numerical test settings.
+Dummy values are arbitrary and must not be treated as flight defaults. Existing
+modules still receive their caller-owned configuration; the header does not
+enable or implement planning/guidance.
+
+[dcs_planner.h](dcs_planner.h) declares the planner input/configuration, fixed
+four-segment output and result codes. It is an interface only; the generation
+function has no implementation yet.
+
+[dcs_dubins.h](dcs_dubins.h) and dcs_dubins.c implement the six Dubins geometry
+families in North/East coordinates, returning straight/arc segments and length/
+turn metrics. This is a building block, not complete planning or guidance.
+The normalized equations adapt Andrew Walker's MIT-licensed Dubins-Curves;
+the copyright and permission notice are retained in the source.
+
 `dcs_nav_step` corrects North/East position and velocity from GNSS, holds fresh
 GNSS ground velocity between fixes, and takes target-relative height from the
 barometer. Its horizontal propagation does not require a canopy-heading
@@ -113,6 +129,8 @@ gcc -std=c11 -Wall -Wextra -Werror -pedantic -DFUSION_USE_NORMAL_SQRT -I. dcs_at
 ./dcs_attitude_test
 gcc -std=c11 -Wall -Wextra -Werror -pedantic -I. dcs_wind.c tests/test_dcs_wind.c -lm -o dcs_wind_test
 ./dcs_wind_test
+gcc -std=c11 -Wall -Wextra -Werror -pedantic -I. dcs_dubins.c tests/test_dcs_dubins.c -lm -o dcs_dubins_test
+./dcs_dubins_test
 ```
 
 The flight-software integration supplies monotonic millisecond timestamps,

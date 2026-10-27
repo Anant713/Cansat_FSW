@@ -81,8 +81,8 @@ the manoeuvres actually observed; this document is not a flight-command script.
 | --- | --- | --- | --- |
 | W01 | Baseline: one configured horizontal airspeed represents ordinary glide adequately. | Ground velocity over different headings, payload/canopy direction evidence, brake state and independent wind/airspeed reference if available. Ground velocity equals air velocity plus wind; one heading alone cannot separate both unknowns. | Nominal airspeed and whether its variation is small enough for the model. Fitting wind with the same assumed airspeed is not independent validation. |
 | W02 | Baseline: straight-flight gates reject misleading wind samples and still permit enough updates. | Raw/filtered wind, each gate result, brake transients, payload oscillation and GNSS course. Check acceptance rate, rejection duration, and estimate age over time. | Heading/course-rate, brake and speed thresholds; whether useful wind is obtained before energy-management decisions. |
-| W03 | Baseline: an EMA reduces varying errors sufficiently; a single horizontal wind vector remains useful over the planning interval. | Wind residual spectra/lag, raw and filtered estimates over height/time/headings, and independent observations where possible. Separate persistent heading/airspeed bias from fluctuating estimates. | EMA coefficient, wind-age limit and replanning threshold. EMA cannot remove a persistent model bias. |
-| W04 | Baseline: weak/missing/stale-wind fallback remains useful without a reliable wind direction. | Log which wind state selected each plan, assumed versus measured wind, observed drift and approach/touchdown errors. Compare planning predictions with outcomes. | Weak-wind/age thresholds and suitability of zero-wind assumption plus position-to-target fallback bearing. These are assumptions, not measured calm conditions. |
+| W03 | Baseline: an EMA reduces varying errors sufficiently; a single horizontal wind vector remains useful over the planning interval. | Wind residual spectra/lag, raw and filtered estimates over height/time/headings, and independent observations where possible. Separate persistent heading/airspeed bias from fluctuating estimates. | EMA coefficient, retained-wind error over update gaps and reassessment threshold. EMA cannot remove a persistent model bias. |
+| W04 | Baseline: weak/no-estimate fallback and retaining accepted wind without expiry remain useful. | Log which wind state selected each plan, assumed versus measured wind, observed drift and approach/touchdown errors. Compare planning predictions with outcomes. | Weak-wind threshold, retained-wind errors and suitability of zero-wind assumption before the first estimate plus position-to-target fallback bearing. These are assumptions, not measured calm conditions. |
 
 ## Glide, turns and actuators
 
@@ -102,13 +102,53 @@ available as they are integrated; unavailable observations stay open.
 | ID | Assumption or setting | Evidence and analysis needed | Decision informed |
 | --- | --- | --- | --- |
 | G01 | Baseline: wind-aware path timing and straight/turn sink accounting predict remaining height usefully. | At each plan/replan and energy check, save remaining segment geometry, wind, time/height prediction and measured subsequent consumption. Compare cumulative prediction error by segment type. | Height classification and feasibility model. Include 20% turn loss consistently in loiter, reconnection and final-path budgets. |
-| G02 | Proposed: preserve an explicit height reserve and use a height tolerance for classification. | Distribution of height-prediction errors, sensing delay, turn/reconnection transients and remaining approach consumption. Test decisions in replay. | Reserve and tolerance values, and their budgeting rule. The most recent reserve/loiter-exit proposal has not yet been approved. Avoid treating the turn-loss allowance as the same reserve twice. |
+| G02 | Baseline: the remaining-route budget includes a separate height reserve; height-classification tolerance remains to be finalized. | Distribution of height-prediction errors, sensing delay, turn/reconnection transients and remaining approach consumption. Test decisions in replay. | Owner-suggested ranges are 10-20 m reserve and 1.5-2% classification tolerance; exact values and percentage basis are unset. Keep the metre-based Y reassessment threshold distinct. Avoid treating the turn-loss allowance as the same reserve twice. |
 | G03 | Baseline: LOS over lines/arcs is trackable with a suitable look-ahead distance. | Active geometry, reference/LOS points, cross-track error, desired course/heading, actual trajectory, brake state and response lag. Measure arc cutting, segment transitions and sustained error. | Look-ahead, radius margin and replan thresholds; a planned arc does not guarantee the flown radius. |
 | G04 | Baseline: end-plane and directed angular-progress rules identify segment/marker crossings reliably. | Timestamped progress, segment changes, GNSS gaps/jumps and video/trajectory evidence. Check +/-pi crossings and backtracking; use deterministic replay for cases not flown. | Progress tolerances, event persistence and handling of poor position data. No advancement should be inferred solely from heading rotation. |
 | G05 | Baseline: late loiter and exit/reconnection preserve enough height for final approach. | Predicted/actual full and partial orbit loss, exit configuration, replacement-path cost, reserve and subsequent approach. Reevaluate exit/reconnection cost when its geometry changes. | Loiter entry/exit logic, radius, energy-point placement and reserve. A 100 m drop may not provide enough height to observe these manoeuvres. |
 | G06 | Baseline: final entry distance and into-wind/fallback bearing allow a useful stabilized final approach. | Final course/heading, wind state, entry position/height, tracking error, touchdown position and independently observed landing reference where possible. | Final length, energy-point distance and weak-wind fallback suitability. Four-slot geometry is a software property; actual trackability needs flight evidence. |
 | G07 | Baseline: target-overrun replanning can identify a feasible return from current remaining height. | Save overrun event, candidate costs, feasibility outcome and actual height consumption if a return occurs. Use replay/simulation when not observed; distinguish from the low-height continue-final fallback. | Return feasibility/reserve and replan scheduling. Do not mark it verified without observing or separately testing the relevant conditions. |
 | G08 | Planned terminal flare has an appropriate trigger, brake level and response. | Trigger-height source/delay, commanded/applied symmetric brakes, sink/ground speed, video and touchdown outcome. | Flare authority, trigger and demand. Values remain undecided; crossing the horizontal target alone is not a flare trigger. |
+
+### Wind reassessment threshold
+
+The approved threshold is 30% vector deviation relative to reference wind
+magnitude when both usable estimates are strong. Skip the percentage check
+while both are weak; crossing between weak and strong requests reassessment.
+The weak-wind threshold is unset. Validate these rules using W02-W04 evidence:
+log both vectors, classifications, relative change where defined, and assessment
+outcomes. Examine repeated weak/strong crossings due to noise and changes in
+direction as well as speed. The approved reference is wind at the last completed
+assessment (initially plan generation), refreshed even if the path is retained.
+Use a separate 1-second persistence timer and the ordinary 2-second interval.
+Retain the last accepted estimate without expiry; age alone causes no request.
+Record age and rejected-update intervals to assess errors from retaining old
+wind. The first accepted estimate requests reassessment of the initial zero-wind
+plan. This is not validated.
+
+The common dcs_config.h header contains explicitly named DCS_SIM_DUMMY_*
+placeholders for future simulation; none establishes a measured flight value.
+Record replaced values and their supporting evidence with each run. The
+DCS_TEST_* constants record agreed initial test settings, not flight validation.
+
+### Path reassessment thresholds
+
+The agreed trigger structure requests reassessment when shortest horizontal
+distance to the active path exceeds X metres or remaining-height shortage
+exceeds Y metres. Current-path feasibility is checked before replacement.
+X/Y values are unset. Approved configurable initial test settings are separate
+1-second continuous persistence timers for horizontal error and height shortage,
+each reset when its condition clears, and at least 2 seconds between ordinary
+reassessments. Target passage requests immediate reassessment once per plan,
+bypassing that interval. These timing settings are not flight-validated;
+wind changes use the same timing with a separate persistence timer.
+
+Using the G01-G04 tracking and prediction evidence, replay threshold crossings
+and log horizontal error, height shortage, trigger reasons, persistence state
+if implemented, and reassessment/retain/replace outcomes. Check nuisance requests
+from GNSS/barometer noise and delayed detection of sustained deviations. Assess
+recovery travel from the actual off-path position rather than assuming immediate
+return to the path. None of these thresholds or recovery estimates is validated.
 
 ## Integration and operating limits
 

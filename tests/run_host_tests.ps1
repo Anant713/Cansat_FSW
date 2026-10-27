@@ -8,7 +8,8 @@ $testCases = @(
         'third_party/Fusion/Fusion/FusionAhrs.c',
         'third_party/Fusion/Fusion/FusionConvention.c', 'tests/test_dcs_attitude.c') },
     @{ Name = 'nav'; Sources = @('dcs_nav.c', 'tests/test_dcs_nav.c') },
-    @{ Name = 'wind'; Sources = @('dcs_wind.c', 'tests/test_dcs_wind.c') }
+    @{ Name = 'wind'; Sources = @('dcs_wind.c', 'tests/test_dcs_wind.c') },
+    @{ Name = 'dubins'; Sources = @('dcs_dubins.c', 'tests/test_dcs_dubins.c') }
 )
 
 Push-Location $repoRoot
