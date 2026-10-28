@@ -7,9 +7,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-static bool mountOK = true, writeOK = true, syncOK = true, closeOK = true;
+static bool mountOK = true, writeOK = true, appendOK = true, closeOK = true, open;
 static FRESULT createResult = FR_OK, lastResult;
-static unsigned collisions, creates, writes, syncs, closes;
+static unsigned collisions, creates, writes, appends, closes;
 static char lastWrite[1024], createdName[32];
 bool SDCard_Init(void) { return mountOK; }
 bool SDCard_CreateFile(const char *name)
@@ -18,35 +18,42 @@ bool SDCard_CreateFile(const char *name)
     strcpy(createdName, name);
     lastResult = collisions ? FR_EXIST : createResult;
     if (collisions) --collisions;
+    if (lastResult == FR_OK) { assert(!open); open = true; }
     return lastResult == FR_OK;
 }
 FRESULT SDCard_GetLastResult(void) { return lastResult; }
 bool SDCard_Write(const uint8_t *data, uint32_t length)
 {
+    assert(open);
     ++writes;
     assert(length < sizeof(lastWrite) && memchr(data, 0, length) == NULL);
     memcpy(lastWrite, data, length); lastWrite[length] = 0;
     return writeOK;
 }
-bool SDCard_Sync(void) { ++syncs; return syncOK; }
-bool SDCard_CloseFile(void) { ++closes; return closeOK; }
+bool SDCard_WriteString(const char *text) { return SDCard_Write((const uint8_t *)text, (uint32_t)strlen(text)); }
+bool SDCard_OpenAppend(const char *name)
+{
+    assert(!open && !strcmp(name, createdName)); ++appends;
+    if (appendOK) open = true;
+    return appendOK;
+}
+bool SDCard_CloseFile(void) { ++closes; if (closeOK) open = false; return closeOK; }
 
 static void compare_fields(const Cansat *c)
 {
-    static const unsigned widths[] = {27,3,2,2,3,2,2,1,1,2,3,3,1,1,2,1,
-        2,2,2,2,2,2,1,1,3,2,2,2,2,2,2,2,2,2,2,2,2,1,2,2,1,1,1,1,2};
-    static const bool signedField[45] = {[5]=true,[16]=true,[17]=true,[18]=true,
-        [19]=true,[20]=true,[21]=true,[25]=true,[26]=true,[27]=true,[30]=true,
-        [31]=true,[32]=true,[33]=true,[34]=true,[35]=true,[36]=true,[39]=true};
-    uint8_t packet[153];
+    static const unsigned widths[] = {27,3,2,2,3,2,2,1,1,2,3,3,1,1,2,1,2,2,2,2,2,2,1,3,2,2,2,2,2,2,2,2,2,2,2,2,1,2,2,1,1,1,1,2};
+    static const bool signedField[44] = {[5]=true,[16]=true,[17]=true,[18]=true,
+        [19]=true,[20]=true,[21]=true,[24]=true,[25]=true,[26]=true,[29]=true,
+        [30]=true,[31]=true,[32]=true,[33]=true,[34]=true,[35]=true,[38]=true};
+    uint8_t packet[151];
     char csv[TELEMETRY_CSV_CAPACITY];
-    assert(Telemetry_Encode(c, packet, sizeof(packet)) == 153);
+    assert(Telemetry_Encode(c, packet, sizeof(packet)) == 151);
     size_t length = Telemetry_FormatCSV(c, csv, sizeof(csv));
     assert(length && csv[length-2] == '\r' && csv[length-1] == '\n');
     size_t offset = 0;
     char *start = csv;
-    for (unsigned i = 0; i < 45; ++i) {
-        char *end = strchr(start, i == 44 ? '\r' : ',');
+    for (unsigned i = 0; i < 44; ++i) {
+        char *end = strchr(start, i == 43 ? '\r' : ',');
         assert(end); *end = 0;
         if (i == 0) assert(!strcmp(start, c->telemetry.teamId));
         else {
@@ -63,7 +70,7 @@ static void compare_fields(const Cansat *c)
         offset += widths[i] + 1;
         start = end + 1;
     }
-    assert(offset == 153);
+    assert(offset == 151);
 }
 
 static void test_csv(void)
@@ -93,7 +100,7 @@ static void test_csv(void)
     const char *header = Telemetry_CSVHeader();
     unsigned commas = 0;
     for (const char *p = header; *p; ++p) commas += *p == ',';
-    assert(commas == 44 && !strcmp(header + strlen(header)-2, "\r\n"));
+    assert(commas == 43 && !strcmp(header + strlen(header)-2, "\r\n"));
 }
 
 static void test_files(void)
@@ -105,23 +112,27 @@ static void test_files(void)
     assert(Logging_Init() && Logging_IsReady());
     assert(creates == 3 && !strcmp(createdName, "0:/LOG0002.CSV"));
     assert(!strcmp(Logging_GetFilename(), createdName));
-    assert(writes == 1 && syncs == 1 && !strcmp(lastWrite, Telemetry_CSVHeader()));
+    assert(writes == 1 && closes == 1 && !open && !strcmp(lastWrite, Telemetry_CSVHeader()));
     assert(Logging_Init() && creates == 3 && writes == 1);
     char expected[TELEMETRY_CSV_CAPACITY];
     assert(Telemetry_FormatCSV(&c, expected, sizeof(expected)));
-    assert(Logging_Write(&c) && !strcmp(lastWrite, expected) && writes == 2 && syncs == 2);
+    assert(Logging_Write(&c) && !strcmp(lastWrite, expected) && writes == 2 && appends == 1 && closes == 2 && !open);
     assert(c.telemetry.packetCount == 0);
     assert(!Logging_Write(NULL) && Logging_IsReady() && writes == 2);
     writeOK = false;
-    assert(!Logging_Write(&c) && !Logging_IsReady() && writes == 3 && syncs == 2);
+    assert(!Logging_Write(&c) && !Logging_IsReady() && writes == 3 && closes == 3 && !open);
     assert(!Logging_Write(&c) && !Logging_Init() && writes == 3);
     closeOK = false; assert(!Logging_Stop()); closeOK = true; assert(Logging_Stop());
     writeOK = true;
-    syncOK = false; assert(!Logging_Init() && !Logging_IsReady()); /* Header sync failure. */
-    assert(Logging_Stop()); syncOK = true;
-    assert(Logging_Init()); syncOK = false;
-    assert(!Logging_Write(&c) && !Logging_IsReady()); /* Row sync failure. */
-    assert(Logging_Stop()); syncOK = true;
+    closeOK = false; assert(!Logging_Init() && !Logging_IsReady() && open);
+    closeOK = true; assert(Logging_Stop() && !open);
+    assert(Logging_Init()); closeOK = false;
+    assert(!Logging_Write(&c) && !Logging_IsReady() && open);
+    assert(!Logging_Stop()); closeOK = true; assert(Logging_Stop() && !open);
+    assert(Logging_Init()); appendOK = false;
+    unsigned oldWrites = writes;
+    assert(!Logging_Write(&c) && !Logging_IsReady() && writes == oldWrites);
+    appendOK = true; assert(Logging_Stop());
     writeOK = false; assert(!Logging_Init()); assert(Logging_Stop()); writeOK = true;
     createResult = FR_DISK_ERR;
     unsigned previous = creates;

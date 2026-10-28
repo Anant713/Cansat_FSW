@@ -5,6 +5,7 @@
 
 #define LINE_SIZE 128U
 #define CONFIG_TIMEOUT_MS 2500U
+enum { CONFIG_INF = 13, CONFIG_RATE, CONFIG_PORT, CONFIG_VERIFY, CONFIG_DONE };
 #define QUEUE_MASK (GNSS_QUEUE_SIZE-1U)
 _Static_assert((GNSS_QUEUE_SIZE & QUEUE_MASK) == 0, "Queue size must be a power of two");
 
@@ -17,13 +18,16 @@ static uint32_t seen_loss;
 static uint16_t dma_position;
 static volatile GNSSDiagnostics diagnostics;
 static GNSSData latest;
+#ifdef GNSS_ENABLE_GSV
+static GNSSSatInView sat_in_view;
+#endif
 static bool have_gga, have_vtg;
 static char line[LINE_SIZE];
 static uint16_t line_length;
 static uint32_t parser_tick;
 /* UBX and NMEA share the wire. Consume binary frames without interpreting
- * payload '$'/newlines as NMEA. Keep only the small configuration payload. */
-static uint8_t ubx_state, ubx_class, ubx_id, ubx_a, ubx_b, ubx_payload[20];
+ * payload '$'/newlines as NMEA. Largest decoded payload is NAV-VELNED. */
+static uint8_t ubx_state, ubx_class, ubx_id, ubx_a, ubx_b, ubx_payload[36];
 static uint16_t ubx_length, ubx_index;
 static bool ubx_checksum_ok;
 static uint8_t tx_frame[28], config_step, expected_id, ack;
@@ -44,6 +48,9 @@ static void reset_parser(void) { line_length = 0; ubx_state = 0; }
 static void invalidate(void)
 {
     memset(&latest, 0, sizeof(latest));
+#ifdef GNSS_ENABLE_GSV
+    sat_in_view.valid = false;
+#endif
     have_gga = have_vtg = false;
     reset_parser();
 }
@@ -89,6 +96,9 @@ bool GNSS_Init(UART_HandleTypeDef *uart, uint32_t currentBaud)
     }
     port = uart;
     diagnostics = (GNSSDiagnostics){0};
+#ifdef GNSS_ENABLE_GSV
+    sat_in_view = (GNSSSatInView){0};
+#endif
     tx_busy = waiting = changing_baud = false;
     loss_epoch = seen_loss = 0;
     uart->Init.BaudRate = currentBaud;
@@ -227,6 +237,7 @@ static bool gga(char **f, unsigned count, uint32_t tick)
     next.latitudeHemisphere = next.longitudeHemisphere = 0;
     next.altitude = next.hdop = 0;
     next.altitudeValid = false;
+    next.hdopValid = false;
     if (next.fixValid) {
         if (!next.utcValid || !coordinate(f[2], f[3], true, &next.latitude) ||
             !coordinate(f[4], f[5], false, &next.longitude)) return false;
@@ -235,6 +246,7 @@ static bool gga(char **f, unsigned count, uint32_t tick)
         if (*f[8]) {
             if (!number(f[8], &v) || v < 0 || v > 999) return false;
             next.hdop = (float)v;
+            next.hdopValid = true;
         }
         if (*f[9]) {
             if (strcmp(f[10], "M") || !number(f[9], &v) || fabs(v) > 100000) return false;
@@ -281,6 +293,44 @@ static bool vtg(char **f, unsigned count, uint32_t tick)
     have_vtg = true; ++diagnostics.goodVtg;
     return true;
 }
+#ifdef GNSS_ENABLE_GSV
+static bool gsv(char **f, unsigned count, uint32_t tick)
+{
+    unsigned total, part, visible, value;
+    if (count < 4 || !integer(f[1], 9, &total) || !total ||
+        !integer(f[2], total, &part) || !part ||
+        !integer(f[3], 36, &visible)) return false;
+    unsigned expected_total = visible ? (visible + 3U) / 4U : 1U;
+    if (total != expected_total) return false;
+    unsigned entries = visible ? visible - (part - 1U) * 4U : 0U;
+    if (entries > 4U) entries = 4U;
+    if (count != 4U + 4U * entries) return false;
+    for (unsigned i = 0; i < entries; ++i) {
+        unsigned j = 4U + 4U * i;
+        if (!integer(f[j], 255, &value) || !value ||
+            (*f[j+1] && !integer(f[j+1], 90, &value)) ||
+            (*f[j+2] && !integer(f[j+2], 359, &value)) ||
+            (*f[j+3] && !integer(f[j+3], 99, &value))) return false;
+    }
+    sat_in_view.satellitesInView = (uint8_t)visible;
+    sat_in_view.messageNumber = (uint8_t)part;
+    sat_in_view.totalMessages = (uint8_t)total;
+    sat_in_view.receivedMs = tick;
+    ++sat_in_view.goodSentences;
+    sat_in_view.valid = true;
+    return true;
+}
+
+bool GNSS_GetSatInView(GNSSSatInView *data)
+{
+    if (data == NULL) return false;
+    *data = sat_in_view;
+    data->valid = data->valid && diagnostics.receiving && seen_loss == loss_epoch &&
+        (uint32_t)(HAL_GetTick() - data->receivedMs) < GNSS_FRESH_MS;
+    return data->valid;
+}
+#endif
+
 static int hex(char c)
 {
     if (c >= '0' && c <= '9') return c-'0';
@@ -311,6 +361,9 @@ static void sentence(uint32_t tick)
     bool ok;
     if (!strcmp(line+3, "GGA")) ok = gga(fields, count, tick);
     else if (!strcmp(line+3, "VTG")) ok = vtg(fields, count, tick);
+#ifdef GNSS_ENABLE_GSV
+    else if (!strcmp(line, "$GPGSV")) ok = gsv(fields, count, tick);
+#endif
     else { ++diagnostics.ignored; return; }
     if (!ok) ++diagnostics.malformed;
 }
@@ -318,14 +371,71 @@ static uint32_t u32(const uint8_t *p)
 {
     return p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
-static void ubx_complete(void)
+#ifdef GNSS_ENABLE_NAV
+static int32_t i32(const uint8_t *p)
 {
+    uint32_t u = u32(p);
+    return (int32_t)(u <= INT32_MAX ? (int64_t)u : (int64_t)u - 4294967296LL);
+}
+static bool calendar_valid(const GNSSNavData *n)
+{
+    static const uint8_t days[] = {31,28,31,30,31,30,31,31,30,31,30,31};
+    if (n->year < 1999 || n->year > 2099 || n->month < 1 || n->month > 12 ||
+        n->hour > 23 || n->minute > 59 || n->second > 60) return false;
+    unsigned limit = days[n->month-1];
+    if (n->month == 2 && n->year % 4 == 0 && (n->year % 100 != 0 || n->year % 400 == 0)) ++limit;
+    return n->day >= 1 && n->day <= limit &&
+        n->nanosecondCorrection >= -1000000000 && n->nanosecondCorrection <= 1000000000;
+}
+static void nav_complete(uint32_t tick)
+{
+    GNSSNavData n = latest.nav;
+    if (ubx_id == 0x12) {
+        if (ubx_length != 36) { ++diagnostics.malformed; return; }
+        n.velocityTowMs = u32(ubx_payload);
+        n.northVelocity = (float)i32(ubx_payload+4) * 0.01f;
+        n.eastVelocity = (float)i32(ubx_payload+8) * 0.01f;
+        n.downVelocity = (float)i32(ubx_payload+12) * 0.01f;
+        n.speed3D = (float)u32(ubx_payload+16) * 0.01f;
+        n.groundSpeed = (float)u32(ubx_payload+20) * 0.01f;
+        n.course = (float)i32(ubx_payload+24) * 0.00001f;
+        n.speedAccuracy = (float)u32(ubx_payload+28) * 0.01f;
+        n.courseAccuracy = (float)u32(ubx_payload+32) * 0.00001f;
+        if (n.velocityTowMs >= 604800000U) { ++diagnostics.malformed; return; }
+        n.velocityReceivedMs = tick;
+        n.velnedFresh = true;
+        ++diagnostics.goodVelned;
+    } else if (ubx_id == 0x21) {
+        if (ubx_length != 20) { ++diagnostics.malformed; return; }
+        n.timeTowMs = u32(ubx_payload);
+        n.timeAccuracyNs = u32(ubx_payload+4);
+        n.nanosecondCorrection = i32(ubx_payload+8);
+        n.year = (uint16_t)ubx_payload[12] | ((uint16_t)ubx_payload[13] << 8);
+        n.month = ubx_payload[14]; n.day = ubx_payload[15];
+        n.hour = ubx_payload[16]; n.minute = ubx_payload[17]; n.second = ubx_payload[18];
+        n.timeValidityFlags = ubx_payload[19];
+        /* No-fix packets may contain unset calendar fields. Keep flags visible. */
+        n.utcDateTimeValid = (n.timeValidityFlags & 7U) == 7U && calendar_valid(&n) && n.timeTowMs < 604800000U;
+        n.timeReceivedMs = tick;
+        n.timeutcFresh = true;
+        ++diagnostics.goodTimeutc;
+    } else return;
+    latest.nav = n;
+}
+#endif
+static void ubx_complete(uint32_t tick)
+{
+#ifdef GNSS_ENABLE_NAV
+    if (ubx_class == 1) nav_complete(tick);
+#else
+    (void)tick;
+#endif
     if (diagnostics.configState != GNSS_CONFIG_BUSY || !waiting) return;
     if (ubx_class == 5 && ubx_length == 2 && ubx_payload[0] == 6 && ubx_payload[1] == expected_id) {
         if (ubx_id == 1) ack = 1;
         if (ubx_id == 0) ack = 2;
     }
-    if (config_step == 14 && ubx_class == 6 && ubx_id == 0 && ubx_length == 20 &&
+    if (config_step == CONFIG_VERIFY && ubx_class == 6 && ubx_id == 0 && ubx_length == 20 &&
         ubx_payload[0] == 1 && u32(ubx_payload+8) == target_baud &&
         u32(ubx_payload+4) == 0x8d0 && (ubx_payload[12]&3U) == 3 && (ubx_payload[14]&3U) == 3)
         port_verified = true;
@@ -355,7 +465,7 @@ static void feed(uint8_t b, uint32_t tick)
                 break;
             case 7: ubx_checksum_ok = b == ubx_a; ubx_state = 8; break;
             case 8:
-                if (ubx_checksum_ok && b == ubx_b) ubx_complete();
+                if (ubx_checksum_ok && b == ubx_b) ubx_complete(tick);
                 else ++diagnostics.badChecksum;
                 ubx_state = 0; break;
             default: reset_parser(); break;
@@ -394,7 +504,7 @@ static void configure_step(void)
     uint32_t now = HAL_GetTick();
     if (waiting) {
         if (ack == 2) { diagnostics.configState = GNSS_CONFIG_NAK; return; }
-        if (config_step == 13) {
+        if (config_step == CONFIG_PORT) {
             /* Port ACK may be at either baud. After physical TX completion,
              * allow receiver processing, change MCU baud and poll the port. */
             if (!tx_busy && (uint32_t)(now-tx_finished_ms) >= 100U) {
@@ -405,14 +515,14 @@ static void configure_step(void)
                     diagnostics.configState = GNSS_CONFIG_IO_ERROR; return;
                 }
                 diagnostics.baudRate = target_baud;
-                changing_baud = false; waiting = false; config_step = 14;
+                changing_baud = false; waiting = false; config_step = CONFIG_VERIFY;
             }
-        } else if (!tx_busy && ((config_step == 14 && port_verified) || (config_step != 14 && ack == 1))) {
+        } else if (!tx_busy && ((config_step == CONFIG_VERIFY && port_verified) || (config_step != CONFIG_VERIFY && ack == 1))) {
             waiting = false; ++config_step;
-            if (config_step == 13 && target_baud == diagnostics.baudRate) config_step = 15;
+            if (config_step == CONFIG_PORT && target_baud == diagnostics.baudRate) config_step = CONFIG_DONE;
         }
         if (waiting && (uint32_t)(now-command_started_ms) >= CONFIG_TIMEOUT_MS) {
-            diagnostics.configState = config_step >= 13 ? GNSS_CONFIG_BAUD_UNCONFIRMED : GNSS_CONFIG_TIMEOUT;
+            diagnostics.configState = config_step >= CONFIG_PORT ? GNSS_CONFIG_BAUD_UNCONFIRMED : GNSS_CONFIG_TIMEOUT;
             changing_baud = false;
             return;
         }
@@ -423,21 +533,33 @@ static void configure_step(void)
     if (config_step < 11) {
         payload[0] = 0xf0; payload[1] = config_step;
         payload[2] = (config_step == 0 || config_step == 5) ? 1 : 0;
+#ifdef GNSS_ENABLE_NAV
+        payload[2] = config_step == 0 ? 1 : 0;
+#endif
+#ifdef GNSS_ENABLE_GSV
+        if (config_step == 3) payload[2] = 1; /* CFG-MSG F0/03: GSV */
+#endif
         (void)send_ubx(1, payload, 3); /* current UART only */
-    } else if (config_step == 11) {
+    } else if (config_step < CONFIG_INF) {
+        payload[0] = 1; payload[1] = config_step == 11 ? 0x12 : 0x21;
+#ifdef GNSS_ENABLE_NAV
+        payload[2] = 1;
+#endif
+        (void)send_ubx(1, payload, 3);
+    } else if (config_step == CONFIG_INF) {
         payload[0] = 1; /* CFG-INF: disable NMEA TXT, not a CFG-MSG sentence */
         (void)send_ubx(2, payload, 10);
-    } else if (config_step == 12) {
+    } else if (config_step == CONFIG_RATE) {
         payload[0] = (uint8_t)measurement_ms; payload[1] = (uint8_t)(measurement_ms >> 8);
         payload[2] = 1; /* navRate=1; timeRef=UTC */
         (void)send_ubx(8, payload, 6);
-    } else if (config_step == 13) {
+    } else if (config_step == CONFIG_PORT) {
         payload[0] = 1; payload[4] = 0xd0; payload[5] = 0x08; /* UART1, 8N1 */
         for (unsigned i = 0; i < 4; ++i) payload[8+i] = (uint8_t)(target_baud >> (8*i));
         payload[12] = payload[14] = 3; /* UBX + NMEA input/output */
         changing_baud = true;
         (void)send_ubx(0, payload, 20);
-    } else if (config_step == 14) {
+    } else if (config_step == CONFIG_VERIFY) {
         payload[0] = 1; (void)send_ubx(0, payload, 1);
     } else {
         diagnostics.configState = GNSS_CONFIG_DONE;
@@ -495,8 +617,20 @@ bool GNSS_GetData(GNSSData *data)
     data->fixValid &= data->valid;
     data->utcValid &= data->valid;
     data->altitudeValid &= data->fixValid;
+    data->hdopValid &= data->fixValid;
     data->vtgValid &= data->fixValid && have_vtg && (uint32_t)(now-data->vtgReceivedMs) < GNSS_FRESH_MS;
     data->speedValid &= data->vtgValid; data->courseValid &= data->vtgValid;
+#ifdef GNSS_ENABLE_NAV
+    bool receiving = diagnostics.receiving && seen_loss == loss_epoch;
+    data->nav.velnedFresh &= receiving && (uint32_t)(now-data->nav.velocityReceivedMs) < GNSS_FRESH_MS;
+    data->nav.timeutcFresh &= receiving && (uint32_t)(now-data->nav.timeReceivedMs) < GNSS_FRESH_MS;
+    /* VELNED has no fix-valid flag. This is a fresh-GGA-based usability check,
+     * not proof of a matching navigation epoch or a valid 3D solution. */
+    data->nav.velocityValid = data->nav.velnedFresh && data->fixValid;
+    data->nav.utcDateTimeValid &= data->nav.timeutcFresh;
+    data->nav.navEpochMatched = data->nav.velnedFresh && data->nav.timeutcFresh &&
+        data->nav.velocityTowMs == data->nav.timeTowMs;
+#endif
     return data->valid;
 }
 bool GNSS_IsDataReady(void) { GNSSData data; return GNSS_GetData(&data); }

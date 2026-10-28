@@ -81,8 +81,6 @@ void Error_Handler(void);
 #define Buzzer_Switch_GPIO_Port GPIOA
 #define LED_Switch_Pin GPIO_PIN_12
 #define LED_Switch_GPIO_Port GPIOA
-#define ESC_Pin GPIO_PIN_5
-#define ESC_GPIO_Port GPIOB
 #define Servo1_Pin GPIO_PIN_6
 #define Servo1_GPIO_Port GPIOB
 #define Servo2_Pin GPIO_PIN_7

@@ -9,7 +9,6 @@
 #include "drivers/AHT20.h"
 #include "drivers/IIS2MDC.h"
 #include "drivers/Battery.h"
-#include "drivers/ReactionWheel.h"
 #include "drivers/Servo.h"
 #include "drivers/Switches.h"
 #include "drivers/Camera.h"
@@ -72,7 +71,6 @@ typedef struct
 
 typedef struct
 {
-    ReactionWheelData reactionWheel;
     ServoData servo;
     bool servoValid;              /* A driver command snapshot is available. */
     bool parafoilDeployed;        /* Set by deployment/state-machine operation. */
@@ -89,7 +87,7 @@ typedef struct
     uint32_t uptimeMs;            /* milliseconds; packed as unsigned 24-bit on wire */
     uint16_t packetCount;         /* Packets accepted by UART TX, modulo 65536. */
     uint16_t receivedPacketCount; /* Complete ground packets, NOT UART chunks. */
-    uint8_t lastReceivedCommand;  /* Command IDs to be defined. */
+    uint8_t lastReceivedCommand;  /* Command ID; zero until command processing is defined. */
     bool commandExecuted;
     bool enabled;                /* Future SEND_TELEM/state logic controls this. */
 } TelemetryState;
@@ -106,7 +104,6 @@ typedef struct
     bool sdCardOK;
     bool xbeeOK;
 
-    bool reactionWheelOK;
     bool servoOK;
 
 } SystemStatus;
@@ -117,7 +114,7 @@ typedef struct Cansat
 {
     /* Native sensor units; shared Telemetry serialization scales for XBee and CSV logging. */
     GNSSData gnss;     /* UTC HHMMSS + ms, signed degrees, altitude m MSL, speed m/s, course deg */
-    BMP280Data bmp;    /* temperature degrees C, pressure Pa */
+    BMP280Data bmp;    /* degrees C, pressure Pa, relativeHeightM in m (telemetry ALTITUDE) */
     AHT20Data env;     /* humidity %RH */
     BMI270Data bmi;    /* acceleration m/s^2 (includes gravity), gyro degrees/s */
     IIS2MDCData mag;   /* magnetic field microtesla */

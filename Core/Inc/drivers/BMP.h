@@ -10,6 +10,9 @@ typedef struct {
     float pressure;                /* Pa, not hPa */
     uint32_t timestamp_ms;          /* host read time */
     bool valid;
+    float groundPressurePa;        /* Startup average, same calibration as pressure. */
+    float relativeHeightM;         /* Relative to this initialization location. */
+    bool heightValid;
 } BMP280Data;
 typedef struct {
     SensorI2C io;
@@ -20,10 +23,15 @@ typedef struct {
     uint16_t t1, p1;
     int16_t t2, t3, p[8];           /* p2 .. p9 */
     float temperature_offset_c, pressure_offset_pa;
+    float groundPressurePa;
+    bool groundPressureValid;
 } BMP280;
 
 /* Startup only: reset + factory coefficients; x2 temperature, x16 pressure,
- * filter x4, 62.5 ms standby, normal mode (~9.5 Hz). */
+ * filter x4, 62.5 ms standby, normal mode (~9.5 Hz).
+ * Hold at ground level: waits 1 s then averages 16 readings 110 ms apart
+ * (about 2.7 s total). Init fails if ground sampling fails. Runtime reads
+ * do not wait for conversions. Reinitialization establishes a new local zero. */
 bool BMP280_Init(BMP280 *dev, I2C_HandleTypeDef *bus, uint8_t address);
 /* May return SENSOR_NOT_READY while a measurement is in progress; retry later.
  * Setting FORCED triggers one measurement. Read consumes it, then mode=SLEEP. */

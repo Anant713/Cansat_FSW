@@ -16,7 +16,6 @@ bool flight_communication_init_ok;
 bool flight_logging_init_ok;
 bool flight_state_init_ok;
 static uint32_t lastAcquisition, lastTelemetry, lastLog;
-#define ACQUISITION_PERIOD_MS 10U
 
 /* Acquisition, persistent mission gates, communication and logging. */
 void App_Init(void)
@@ -47,7 +46,8 @@ void App_RunOnce(void)
     }
     Communication_Update(&flight_cansat);
     /* Future attitude estimation runs after calibrated acquisition in every
-     * mission state. Barometric altitude feeds the height gates now. */
+     * mission state. Auxiliary navigation altitude is updated separately;
+     * state-machine height gates read the BMP driver's relative height. */
     BarometricAltitude_Update(&flight_cansat);
     StateMachine_Update(&flight_cansat);
     /* Refresh after acquisition; both due operations use the same Cansat data.

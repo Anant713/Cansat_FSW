@@ -53,6 +53,9 @@ static void report(void)
             (double)sensor_bmp_data.temperature, (double)sensor_bmp_data.pressure,
             (unsigned long)sensor_bmp_data.timestamp_ms, (unsigned long)sensor_sample_count[0]);
     else Console_Write("BMP280: no valid sample\r\n");
+    if (sensor_bmp_data.valid && sensor_bmp_data.heightValid)
+        Console_Printf("BMP280 ground=%.2f Pa relative height=%.2f m\r\n",
+            (double)sensor_bmp_data.groundPressurePa, (double)sensor_bmp_data.relativeHeightM);
     if (sensor_aht_data.valid)
         Console_Printf("AHT20 humidity=%.2f %%RH sample_ms=%lu count=%lu\r\n",
             (double)sensor_aht_data.humidity, (unsigned long)sensor_aht_data.timestamp_ms,

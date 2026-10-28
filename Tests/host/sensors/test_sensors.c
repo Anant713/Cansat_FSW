@@ -134,13 +134,22 @@ static void test_bmp(void)
     BMP280 dev; BMP280Data out;
     assert(BMP280_Init(&dev, &bus, 0x77));
     assert(regs[0x77][0xf4] == 0x57 && regs[0x77][0xf5] == 0x28);
-    assert(!BMP280_Read(&dev, &out) && !out.valid && dev.io.status == SENSOR_NOT_READY);
+    assert(dev.groundPressureValid);
+    near(dev.groundPressurePa, 100653.26f, 0.1f);
+    assert(BMP280_Read(&dev, &out) && out.heightValid);
+    near(out.relativeHeightM, 0, 0.01f);
+    float ground = dev.groundPressurePa;
+    dev.groundPressurePa = out.pressure / 0.9f;
+    assert(BMP280_Read(&dev, &out) && out.heightValid);
+    near(out.relativeHeightM, 879.93f, 0.1f);
+    dev.groundPressurePa = ground;
     tick += 44;
     assert(BMP280_Read(&dev, &out));
     near(out.temperature, 25.0825f, 0.001f); near(out.pressure, 100653.26f, 0.1f);
     assert(BMP280_Calibrate(&dev, &out, 26.0f, 101000.0f));
     regs[0x77][0xf3] = 8; /* last complete sample remains readable */
     assert(BMP280_Read(&dev, &out)); near(out.temperature, 26, 0.001f); near(out.pressure, 101000, 0.1f);
+    near(out.relativeHeightM, 0, 0.01f); /* pressure offset also shifts local reference */
     assert(!BMP280_SetMode(&dev, BMP280_FORCED));
     assert(regs[0x77][0xf4] == 0x54 && dev.io.status == SENSOR_NOT_READY);
     regs[0x77][0xf3] = 0;
@@ -157,6 +166,11 @@ static void test_bmp(void)
     assert(!BMP280_Init(&dev, &bus, 0x76) && dev.io.status == SENSOR_BAD_DATA);
     bmp_fixture(0x76); regs[0x76][0xf3] = 1;
     assert(!BMP280_Init(&dev, &bus, 0x76) && dev.io.status == SENSOR_TIMEOUT);
+    reset(); bmp_fixture(0x76); regs[0x76][0xf3] = 8;
+    assert(!BMP280_Init(&dev, &bus, 0x76) && dev.io.status == SENSOR_TIMEOUT && !dev.initialized);
+    reset(); bmp_fixture(0x76);
+    regs[0x76][0xf7] = 0x80; regs[0x76][0xf8] = regs[0x76][0xf9] = 0;
+    assert(!BMP280_Init(&dev, &bus, 0x76) && !dev.groundPressureValid && !dev.initialized);
     puts("BMP280: factory compensation, offsets, mode transitions and failures passed");
 }
 static void test_aht(void)

@@ -2,6 +2,7 @@
 #define SENSOR_ACQUISITION_H
 
 #include <stdbool.h>
+#define ACQUISITION_PERIOD_MS 10U
 
 typedef struct Cansat Cansat;
 

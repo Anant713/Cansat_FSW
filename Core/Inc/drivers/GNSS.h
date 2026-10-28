@@ -10,6 +10,39 @@
 #define GNSS_QUEUE_SIZE 4096U
 #define GNSS_PROCESS_BUDGET 1024U
 #define GNSS_FRESH_MS 3000U
+#if defined(GNSS_ENABLE_GSV) && defined(GNSS_ENABLE_NAV)
+#error "Select one GNSS test profile: GSV or NAV"
+#endif
+
+/* Test-only build variant: still uses the single existing UART/DMA receiver. */
+#ifdef GNSS_ENABLE_GSV
+typedef struct {
+    uint8_t satellitesInView;
+    uint8_t messageNumber, totalMessages;
+    uint32_t receivedMs, goodSentences;
+    bool valid;
+} GNSSSatInView;
+/* Count comes from each GPGSV header, not a sum of multipart sentences.
+ * Freshness is independent of a GGA fix. This does not return satellite details. */
+bool GNSS_GetSatInView(GNSSSatInView *data);
+#endif
+
+#ifdef GNSS_ENABLE_NAV
+typedef struct {
+    float northVelocity, eastVelocity, downVelocity; /* m/s; down positive */
+    float speed3D, groundSpeed, course;              /* m/s, m/s, degrees */
+    float speedAccuracy, courseAccuracy;             /* m/s, degrees estimates */
+    uint32_t velocityTowMs, timeTowMs;               /* GPS time of week */
+    uint32_t velocityReceivedMs, timeReceivedMs;
+    uint16_t year;
+    uint8_t month, day, hour, minute, second;
+    uint8_t timeValidityFlags; /* raw TIMEUTC bits 0=TOW, 1=week, 2=UTC */
+    uint32_t timeAccuracyNs;
+    int32_t nanosecondCorrection; /* signed; add to calendar second, not normalized */
+    bool velnedFresh, timeutcFresh, velocityValid, utcDateTimeValid;
+    bool navEpochMatched; /* both fresh UBX messages have identical iTOW */
+} GNSSNavData;
+#endif
 
 typedef struct {
     uint32_t utcTime;              /* HHMMSS, UTC time-of-day; GGA has no date */
@@ -26,6 +59,10 @@ typedef struct {
     bool utcValid, altitudeValid, speedValid, courseValid, vtgValid;
     bool fixValid;                /* fresh satellite fix: GGA quality 1 or 2 */
     bool valid;                   /* fresh, well-formed GGA, including NO FIX */
+    bool hdopValid;
+#ifdef GNSS_ENABLE_NAV
+    GNSSNavData nav; /* Independent UBX snapshots; inspect their own validity. */
+#endif
 } GNSSData;
 
 typedef enum {
@@ -41,6 +78,9 @@ typedef struct {
     bool receiving;
     GNSSConfigState configState;
     uint8_t configStep;
+#ifdef GNSS_ENABLE_NAV
+    uint32_t goodVelned, goodTimeutc;
+#endif
 } GNSSDiagnostics;
 
 /* After CubeMX UART/DMA init. currentBaud must match the receiver NOW.
@@ -56,6 +96,9 @@ void GNSS_GetDiagnostics(GNSSDiagnostics *diagnostics);
 
 /* Asynchronous receiver configuration, advanced by Process():
  * GGA+VTG each solution, disable other standard NMEA/TXT, set 1/2/5 Hz,
+ * GNSS_ENABLE_GSV test builds additionally enable GPGSV each solution.
+ * GNSS_ENABLE_NAV builds select GGA + NAV-VELNED + NAV-TIMEUTC, no VTG.
+ * Other builds explicitly disable these two UBX navigation messages.
  * optionally change both module and MCU baud, then verify port readback.
  * periodMs: 1000, 500, 200. targetBaud: 9600..115200 standard rates.
  * Poll diagnostics.configState; true means STARTED, not acknowledged.

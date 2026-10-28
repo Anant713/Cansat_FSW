@@ -24,14 +24,14 @@ bool Communication_Init(void);
 void Communication_Update(Cansat *cansat);
 
 
-/* Binary serialization: 108 data bytes, 44 comma bytes, final CR = 153 bytes.
+/* Binary serialization: 107 data bytes, 43 comma bytes, final CR = 151 bytes.
  * Multi-byte integers are little-endian; signed fields use two's complement.
  * Team ID occupies 27 bytes, padded with zero bytes. No extra string terminator.
  * Measurement sentinels: unsigned maximum / signed minimum; invalid hemisphere
  * is 0xff. Sentinels are reserved, so those endpoints cannot represent readings.
- * Counters/command ID/booleans retain their full ranges (no sentinel).
+ * Counters/booleans retain their full ranges (no sentinel).
  * Rounds scaled native units to nearest integer, halfway away from zero.
- * Returns 153, or zero for invalid arguments/team ID/insufficient capacity.
+ * Returns 151, or zero for invalid arguments/team ID/insufficient capacity.
  * Parse fixed widths: binary payload can contain comma, CR, and NUL bytes.
  * Never use strlen, CSV splitting, or XBee_SendString on this buffer. */
 size_t Communication_FormatTelemetry(const Cansat *cansat, uint8_t *buffer, size_t capacity);

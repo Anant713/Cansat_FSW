@@ -61,7 +61,7 @@ bool Logging_Write(const Cansat *cansat)
 
 bool BMP280_Init(BMP280 *dev, I2C_HandleTypeDef *bus, uint8_t address)
 {
-    assert(bus == &hi2c2 && address == BMP280_ADDRESS_LOW);
+    assert(bus == &hi2c2 && address == BMP280_ADDRESS_HIGH);
     ++initCalls[BMP];
     *dev = (BMP280){.initialized = initOK[BMP]};
     return dev->initialized;
@@ -190,7 +190,6 @@ static void test_acquisition(void)
     c.navigation.altitude = 321.0f;
     c.actuators.servo.enabled = true;
     c.actuators.servo.servo1Angle = 55.0f;
-    c.actuators.reactionWheel.pwmCommand = 123U;
     c.switches.dvr = true;
     Cansat expected = c;
 
@@ -354,3 +353,4 @@ int main(void)
     puts("Sensor acquisition tests passed");
     return 0;
 }
+

@@ -14,14 +14,14 @@ static const FieldLayout layout[TELEMETRY_FIELD_COUNT] = {
     {1,HEMISPHERE_FIELD}, {1,HEMISPHERE_FIELD}, {2,UNSIGNED_FIELD}, {1,UNSIGNED_FIELD},
     {2,SIGNED_FIELD}, {2,SIGNED_FIELD}, {2,SIGNED_FIELD},
     {2,SIGNED_FIELD}, {2,SIGNED_FIELD}, {2,SIGNED_FIELD},
-    {1,UNSIGNED_FIELD}, {1,UNSIGNED_FIELD}, {3,UNSIGNED_FIELD},
+    {1,UNSIGNED_FIELD}, {3,UNSIGNED_FIELD},
     {2,SIGNED_FIELD}, {2,SIGNED_FIELD}, {2,SIGNED_FIELD},
     {2,UNSIGNED_FIELD}, {2,UNSIGNED_FIELD},
     {2,SIGNED_FIELD}, {2,SIGNED_FIELD}, {2,SIGNED_FIELD}, {2,SIGNED_FIELD},
     {2,SIGNED_FIELD}, {2,SIGNED_FIELD}, {2,SIGNED_FIELD},
     {1,UNSIGNED_FIELD}, {2,UNSIGNED_FIELD}, {2,SIGNED_FIELD},
-    {1,UNSIGNED_FIELD}, {1,UNSIGNED_FIELD}, {1,UNSIGNED_FIELD},
-    {1,UNSIGNED_FIELD}, {2,UNSIGNED_FIELD}
+    {1,UNSIGNED_FIELD}, {1,UNSIGNED_FIELD},
+    {1,UNSIGNED_FIELD}, {1,UNSIGNED_FIELD}, {2,UNSIGNED_FIELD}
 };
 
 const char *Telemetry_CSVHeader(void)
@@ -29,7 +29,7 @@ const char *Telemetry_CSVHeader(void)
     return "TEAM_ID,TIME_MS,PACKET_COUNT,ALTITUDE,PRESSURE,TEMPERATURE,VOLTAGE,"
            "GNSS_HOUR,GNSS_MINUTE,GNSS_SECOND_MS,GNSS_LATITUDE,GNSS_LONGITUDE,"
            "GNSS_LAT_HEMISPHERE,GNSS_LON_HEMISPHERE,GNSS_ALTITUDE,GNSS_SATELLITES,"
-           "ACCEL_X,ACCEL_Y,ACCEL_Z,GYRO_X,GYRO_Y,GYRO_Z,ESC_PWM,FLIGHT_STATE,"
+           "ACCEL_X,ACCEL_Y,ACCEL_Z,GYRO_X,GYRO_Y,GYRO_Z,FLIGHT_STATE,"
            "HUMIDITY,MAG_X,MAG_Y,MAG_Z,GNSS_SPEED,COURSE,QUAT_W,QUAT_X,QUAT_Y,QUAT_Z,"
            "ANGULAR_VELOCITY_X,ANGULAR_VELOCITY_Y,ANGULAR_VELOCITY_Z,PARAFOIL_STATUS,"
            "TARGET_DISTANCE,HEADING_ERROR,LEFT_SERVO,RIGHT_SERVO,LAST_COMMAND,"
@@ -167,7 +167,7 @@ size_t Telemetry_Encode(const Cansat *c, uint8_t *buffer, size_t capacity)
     field(&packet, teamId, sizeof(teamId));
     number(&packet, c->telemetry.uptimeMs, 1, 0, 0xffffff, true, 3);
     integer(&packet, c->telemetry.packetCount, 2);
-    number(&packet, c->navigation.altitude, 10, 0, UINT16_MAX, c->navigation.altitudeValid, 2);
+    number(&packet, c->bmp.relativeHeightM, 10, 0, UINT16_MAX, c->bmp.valid && c->bmp.heightValid, 2);
     number(&packet, c->bmp.pressure, 1, 0, 0xffffff, c->bmp.valid, 3);
     number(&packet, c->bmp.temperature, 100, INT16_MIN, INT16_MAX, c->bmp.valid, 2);
     number(&packet, c->battery.voltage, 1000, 0, UINT16_MAX, c->battery.valid, 2);
@@ -186,8 +186,6 @@ size_t Telemetry_Encode(const Cansat *c, uint8_t *buffer, size_t capacity)
     number(&packet, c->bmi.gyroX, 10, INT16_MIN, INT16_MAX, c->bmi.valid, 2);
     number(&packet, c->bmi.gyroY, 10, INT16_MIN, INT16_MAX, c->bmi.valid, 2);
     number(&packet, c->bmi.gyroZ, 10, INT16_MIN, INT16_MAX, c->bmi.valid, 2);
-    number(&packet, c->actuators.reactionWheel.pwmCommand, 1, 0, UINT8_MAX,
-           c->actuators.reactionWheel.valid, 1);
     number(&packet, c->missionState, 1, CANSAT_STATE_LAUNCH_PAD, CANSAT_STATE_TOUCHDOWN, true, 1);
     number(&packet, c->env.humidity, 1000, 0, 100000, c->env.valid, 3);
     /* Driver gives microtesla: /100 -> gauss, *10000 -> 0.0001 gauss counts. */

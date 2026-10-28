@@ -5,7 +5,7 @@
 #define MISSION_STORE_ADDRESS 0x080E0000UL
 #define MISSION_STORE_SIZE (128U * 1024U)
 typedef enum { MISSION_STORE_EMPTY, MISSION_STORE_VALID, MISSION_STORE_ERROR } MissionStoreResult;
-/* Payload: state bits 0..7, crossed-altitude bit 8, HDRM complete bit 9,
+/* Payload: state bits 0..7, legacy ignored bit 8, HDRM complete bit 9,
  * rounded ground pressure in Pa bits 10..26 (zero = unset). */
 #define MISSION_PRESSURE_SHIFT 10U
 #define MISSION_PRESSURE_MASK 0x1ffffU

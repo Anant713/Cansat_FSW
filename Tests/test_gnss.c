@@ -5,8 +5,8 @@
 #include <string.h>
 
 #define GNSS_TEST_CURRENT_BAUD 9600U
-#define GNSS_TEST_TARGET_BAUD  9600U
-#define GNSS_TEST_PERIOD_MS    1000U /* 500=2 Hz, 200=5 Hz */
+#define GNSS_TEST_TARGET_BAUD  38400U
+#define GNSS_TEST_PERIOD_MS    200U /* 500=2 Hz, 200=5 Hz */
 extern UART_HandleTypeDef huart6;
 typedef enum {
     GNSS_TEST_INIT_ERROR = 0, GNSS_TEST_WAITING_FOR_BYTES, GNSS_TEST_WAITING_FOR_GGA,

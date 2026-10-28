@@ -48,7 +48,34 @@ bool BMP280_Init(BMP280 *dev, I2C_HandleTypeDef *bus, uint8_t address)
     dev->mode = BMP280_NORMAL;
     dev->pending = true;
     dev->started_ms = HAL_GetTick();
+    /* Startup-only settling and averaging. 110 ms exceeds the maximum
+     * conversion + 62.5 ms standby, avoiding repeated reads of one sample. */
+    HAL_Delay(1000);
+    float sum = 0.0f;
+    for (unsigned i = 0; i < 16U; ++i) {
+        BMP280Data sample;
+        uint32_t wait_start = HAL_GetTick();
+        while (!BMP280_Read(dev, &sample)) {
+            if (dev->io.status != SENSOR_NOT_READY) goto ground_failed;
+            if ((uint32_t)(HAL_GetTick() - wait_start) >= 200U) {
+                Sensor_Fail(&dev->io, SENSOR_TIMEOUT);
+                goto ground_failed;
+            }
+            HAL_Delay(1);
+        }
+        if (sample.pressure < 30000.0f || sample.pressure > 110000.0f) {
+            Sensor_Fail(&dev->io, SENSOR_BAD_DATA);
+            goto ground_failed;
+        }
+        sum += sample.pressure;
+        if (i < 15U) HAL_Delay(110);
+    }
+    dev->groundPressurePa = sum / 16.0f;
+    dev->groundPressureValid = true;
     return true;
+ground_failed:
+    dev->initialized = false;
+    return false;
 }
 
 bool BMP280_SetMode(BMP280 *dev, BMP280Mode mode)
@@ -120,6 +147,12 @@ bool BMP280_Read(BMP280 *dev, BMP280Data *data)
     if (!isfinite(data->temperature) || !isfinite(data->pressure) || data->pressure <= 0.0f)
         return Sensor_Fail(&dev->io, SENSOR_BAD_DATA);
     data->timestamp_ms = HAL_GetTick();
+    data->groundPressurePa = dev->groundPressurePa;
+    if (dev->groundPressureValid && dev->groundPressurePa > 0.0f) {
+        data->relativeHeightM = 44330.0f *
+            (1.0f - powf(data->pressure / dev->groundPressurePa, 0.1903f));
+        data->heightValid = isfinite(data->relativeHeightM);
+    }
     data->valid = true;
     dev->pending = false;
     if (dev->mode == BMP280_FORCED) dev->mode = BMP280_SLEEP;
@@ -131,6 +164,10 @@ bool BMP280_SetCalibration(BMP280 *dev, float temperature_offset_c, float pressu
     if (!usable(dev)) return false;
     if (!isfinite(temperature_offset_c) || !isfinite(pressure_offset_pa))
         return Sensor_Fail(&dev->io, SENSOR_BAD_ARGUMENT);
+    float ground = dev->groundPressurePa + pressure_offset_pa - dev->pressure_offset_pa;
+    if (dev->groundPressureValid && (!isfinite(ground) || ground <= 0.0f))
+        return Sensor_Fail(&dev->io, SENSOR_BAD_ARGUMENT);
+    if (dev->groundPressureValid) dev->groundPressurePa = ground;
     dev->temperature_offset_c = temperature_offset_c;
     dev->pressure_offset_pa = pressure_offset_pa;
     dev->io.status = SENSOR_OK;

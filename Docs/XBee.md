@@ -86,12 +86,12 @@ does not add a newline. `XBee_IsTxBusy()` becomes false at final UART completion
 `txCompleted` is **not a radio-delivery acknowledgement**. After a UART/DMA error,
 busy can remain set until recovery finishes, protecting the DMA buffer.
 
-The application's fixed-width binary telemetry is exactly 153 bytes and fits
+The application's fixed-width binary telemetry is exactly 151 bytes and fits
 the 256-byte TX capacity. RX DMA is also 256 bytes.
 See [communication and the telemetry schema](Communication.md).
 UART writes are byte streams, not guaranteed one-to-one RF frames.
 
-At 115200 baud with 8N1, 153 bytes take `153 * 10 / 115200 = 13.28 ms` on the
+At 115200 baud with 8N1, 151 bytes take `151 * 10 / 115200 = 13.11 ms` on the
 UART wire. CPU work is the short copy/setup and interrupts, not that whole
 13.28 ms. RF packetization, channel access and retries add separate delays.
 
@@ -159,7 +159,7 @@ network settings: the two supplied guides describe different S2C firmware famili
 network roles and radio settings are not interchangeable. With RTS unwired, do
 not configure the radio to wait for an external RTS signal.
 
-A 153-byte telemetry record can span multiple RF packets. The remote UART may
+A 151-byte telemetry record can span multiple RF packets. The remote UART may
 deliver it in several chunks, or adjacent records in one chunk. The application
 must frame records, for example with newline-delimited CSV or a length/checksum
 protocol. Include sequence numbers and application acknowledgements/timeouts if

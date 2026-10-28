@@ -1,5 +1,11 @@
 # Flight and subunit test firmware
 
+`TestAcquisitionLogging` runs the live sensor acquisition and CSV logging tasks
+at their shared configured periods. `TestAcquisitionLoggingTelemetry` adds XBee
+transmission at its configured period. Both report only task averages and their
+sum over USART3.
+See [combined test instructions](../Docs/AcquisitionLoggingTest.md).
+
 Every firmware uses the generated `Core/Src/main.c` for HAL, clock, and peripheral
 initialization. It calls `App_Init()` once, then calls `App_RunOnce()` repeatedly.
 CMake selects exactly one source file implementing these hooks. Test files do not

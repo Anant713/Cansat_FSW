@@ -2,13 +2,13 @@
 
 The schema follows `Budgets - Telemetry Packet Structure.pdf` and the user's clarified
 wire format: scale the measurement to an integer, then transmit that integer's
-**binary bytes**, not its decimal digits. GYRO SPIN RATE is the reaction-wheel ESC
-PWM command. All source values come from `Cansat` in native physical units.
+**binary bytes**, not its decimal digits. The current schema has 44 fields. Sensor values come from `Cansat`
+in native physical units.
 
 ## Wire layout
 
-Every packet is **153 bytes: 108 data bytes + 44 comma bytes + one CR byte**.
-It contains 45 fixed-width fields. Integer fields use **little-endian** byte order
+Every packet is **151 bytes: 107 data bytes + 43 comma bytes + one CR byte**.
+It contains 44 fixed-width fields. Integer fields use **little-endian** byte order
 (least significant byte first); signed integers use two's complement. Values
 occupy exactly 1, 2, or 3 bytes as specified. The team ID occupies 27 ASCII bytes,
 zero-padded if shorter. There is no extra packet NUL terminator, LF, CSV header,
@@ -21,8 +21,8 @@ A 24-bit value such as 123456 is sent as `40 E2 01`.
 
 **The receiver must parse fixed widths/offsets, not split on commas or CR.**
 Payload bytes can themselves equal comma (`0x2C`), CR (`0x0D`), or NUL (`0x00`).
-Read/assemble all 153 bytes across UART receive chunks and validate separators at
-the specified positions; only byte 152 is the packet-ending CR. Do not call
+Read/assemble all 151 bytes across UART receive chunks and validate separators at
+the specified positions; only byte 150 is the packet-ending CR. Do not call
 `strlen`, `strtok`, line readers, or `XBee_SendString` on this packet. The PDF defines
 no checksum/escaping or unique sync marker; offset checks alone cannot guarantee
 resynchronization or detect every corrupted packet after byte loss. Those would
@@ -47,7 +47,7 @@ not calculate estimates or normalize quaternions.
 | 1 | TEAM ID | `telemetry.teamId` | 27 ASCII bytes, zero-padded | char array | 0 | 27 |
 | 2 | TIME STAMPING | `telemetry.uptimeMs` | Already milliseconds since boot | u24 | 28 | 3 |
 | 3 | PACKET COUNT | `telemetry.packetCount` | Integer | uint16 | 32 | 2 |
-| 4 | ALTITUDE | `navigation.altitude` | metres x10 | uint16 | 35 | 2 |
+| 4 | ALTITUDE | `bmp.relativeHeightM` | metres x10; requires bmp.valid and heightValid | uint16 | 35 | 2 |
 | 5 | PRESSURE | `bmp.pressure` | Pa x1 | u24 | 38 | 3 |
 | 6 | TEMPERATURE | `bmp.temperature` | degrees C x100 | int16 | 42 | 2 |
 | 7 | VOLTAGE | `battery.voltage` | volts x1000 | uint16 | 45 | 2 |
@@ -59,21 +59,20 @@ not calculate estimates or normalize quaternions.
 | 16 | GNSS SATELLITES | `gnss.satellites` | Integer; satellites used in fix | uint8 | 70 | 1 |
 | 17,18,19 | ACCELEROMETER DATA | `bmi.accelX/Y/Z` | m/s^2 x100 | int16 x3 | 72,75,78 | 2,2,2 |
 | 20,21,22 | GYROSCOPE DATA | `bmi.gyroX/Y/Z` | degrees/second x10 | int16 x3 | 81,84,87 | 2,2,2 |
-| 23 | GYRO SPIN RATE | `actuators.reactionWheel.pwmCommand` | ESC command, checked 0..255; not measured RPM | uint8 | 90 | 1 |
-| 24 | FLIGHT SOFTWARE STATE | `missionState` | 0 launch pad, 1 ascent, 2 descent 1, 3 descent 2, 4 touchdown | uint8 | 92 | 1 |
-| 25 | HUMIDITY | `env.humidity` | %RH x1000 | u24 | 94 | 3 |
-| 26,27,28 | MAGNETIC FIELD | `mag.magX/Y/Z` | microtesla /100 x10000 = microtesla x100 | int16 x3 | 98,101,104 | 2,2,2 |
-| 29 | GNSS SPEED | `gnss.speed` | metres/second x100 | uint16 | 107 | 2 |
-| 30 | COURSE | `gnss.course` | degrees x100 | uint16 | 110 | 2 |
-| 31,32,33,34 | QUATERNION | `attitude.quaternion[0..3]` | dimensionless x10000, w,x,y,z | int16 x4 | 113,116,119,122 | 2,2,2,2 |
-| 35,36,37 | ANGULAR VELOCITY | `attitude.angularVelocity[0..2]` | degrees/second x10, body X,Y,Z | int16 x3 | 125,128,131 | 2,2,2 |
-| 38 | PARAFOIL STATUS | `actuators.parafoilDeployed` | 0/1 | bool | 134 | 1 |
-| 39 | TARGET DISTANCE | `navigation.targetDistance` | metres x10 | uint16 | 136 | 2 |
-| 40 | HEADING ERROR | `navigation.headingError` | signed degrees x100 | int16 | 139 | 2 |
-| 41,42 | LEFT/RIGHT SERVO | `actuators.servo.servo1Angle/servo2Angle` | whole degrees | uint8 x2 | 142,144 | 1,1 |
-| 43 | LAST RECEIVED COMMAND | `telemetry.lastReceivedCommand` | ID to be defined | uint8 | 146 | 1 |
-| 44 | COMMAND EXECUTION | `telemetry.commandExecuted` | 0/1 | bool | 148 | 1 |
-| 45 | RECEIVED PACKET COUNT | `telemetry.receivedPacketCount` | Complete ground packets, modulo 65536 | uint16 | 150 | 2 |
+| 23 | FLIGHT SOFTWARE STATE | `missionState` | 0 launch pad, 1 ascent, 2 descent 1, 3 descent 2, 4 touchdown | uint8 | 90 | 1 |
+| 24 | HUMIDITY | `env.humidity` | %RH x1000 | u24 | 92 | 3 |
+| 25,26,27 | MAGNETIC FIELD | `mag.magX/Y/Z` | microtesla /100 x10000 = microtesla x100 | int16 x3 | 96,99,102 | 2,2,2 |
+| 28 | GNSS SPEED | `gnss.speed` | metres/second x100 | uint16 | 105 | 2 |
+| 29 | COURSE | `gnss.course` | degrees x100 | uint16 | 108 | 2 |
+| 30,31,32,33 | QUATERNION | `attitude.quaternion[0..3]` | dimensionless x10000, w,x,y,z | int16 x4 | 111,114,117,120 | 2,2,2,2 |
+| 34,35,36 | ANGULAR VELOCITY | `attitude.angularVelocity[0..2]` | degrees/second x10, body X,Y,Z | int16 x3 | 123,126,129 | 2,2,2 |
+| 37 | PARAFOIL STATUS | `actuators.parafoilDeployed` | 0/1 | bool | 132 | 1 |
+| 38 | TARGET DISTANCE | `navigation.targetDistance` | metres x10 | uint16 | 134 | 2 |
+| 39 | HEADING ERROR | `navigation.headingError` | signed degrees x100 | int16 | 137 | 2 |
+| 40,41 | LEFT/RIGHT SERVO | `actuators.servo.servo1Angle/servo2Angle` | whole degrees | uint8 x2 | 140,142 | 1,1 |
+| 42 | LAST RECEIVED COMMAND | `telemetry.lastReceivedCommand` | Command ID | uint8 | 144 | 1 |
+| 43 | COMMAND EXECUTION | `telemetry.commandExecuted` | 0/1 | bool | 146 | 1 |
+| 44 | RECEIVED PACKET COUNT | `telemetry.receivedPacketCount` | Complete ground packets, modulo 65536 | uint16 | 148 | 2 |
 
 GNSS time is three binary fields: hour, minute, and milliseconds within the minute.
 12:34:59.875 encodes 12 (1 byte), 34 (1 byte), and 59875 (2 bytes), with separators.
@@ -100,9 +99,7 @@ degree servo commands. The two counters, command ID, and boolean status fields
 are known bookkeeping values and retain their full ranges without sentinels.
 
 Reserving an endpoint means it cannot also represent a real measurement. For
-example, ESC command 255 is reserved for unavailable; 0..254 remain usable on the
-wire. Supporting both a real command 255 and an unavailable state needs a separate
-validity bit or a wider field. The same restriction applies to -32768 in signed
+example, -32768 is reserved in signed
 16-bit measurement fields and 65535 in unsigned 16-bit measurement fields.
 
 Validity comes from sensor flags, GNSS per-field flags, or estimate/servo validity
@@ -112,11 +109,10 @@ force an out-of-range measurement into a field.
 
 ## Type and budget notes
 
-- The corrected binary layout matches the **153-byte PDF budget** and fits the
-  restored **256-byte XBee TX buffer**. Each send passes an explicit length of 153;
+- The corrected binary layout uses the revised **151-byte budget** and fits the
+  restored **256-byte XBee TX buffer**. Each send passes an explicit length of 151;
   the UART buffer capacity does not determine RF packetization.
-- The PDF's delimiter count is inconsistent (43 in one column, 44 in others).
-  Summing its component fields requires 44 commas, used here.
+- The revised schema removes the one-byte reserved field and its delimiter from the original 153-byte layout. It contains 44 fields and 43 commas.
 - C has no standard uint24_t. Sources remain float/double/uint32_t; packing writes
   exactly three low-order bytes after checking range. Never send sizeof(uint32_t)
   for these three-byte fields or transmit a native C struct directly.
@@ -129,8 +125,7 @@ force an out-of-range measurement into a field.
 - uint16 packet counters wrap modulo 65536 (about 9.1 hours at 2 Hz). A wider
   counter would require updating the wire layout.
 - Servo uint8 fields suit the current 0..180 degree commands. Signed deflections
-  would need a signed convention/type. ESC PWM commands are raw command counts;
-  the wheel driver/control must separately define their PWM pulse mapping.
+  would need a signed convention/type.
 - The native team ID array holds 27 characters plus NUL. The wire reserves exactly
   27 bytes. The default is the PDF example `2026-IN-SPACe-CAN-7USAT-016`;
   change `CANSAT_DEFAULT_TEAM_ID` if the flight team's actual ID differs.
@@ -138,11 +133,11 @@ force an out-of-range measurement into a field.
 ## Integration and reception placeholder
 
 `Communication_FormatTelemetry(cansat, uint8_t *buffer, capacity)` serializes the
-current count and returns 153, or zero for invalid arguments/team ID/insufficient
+current count and returns 151, or zero for invalid arguments/team ID/insufficient
 capacity. It never changes Cansat. Use its returned length with `XBee_Send`.
 
 `Communication_SendTelemetry()` packs a snapshot with packetCount+1, sends the
-153-byte buffer, and commits the count only on XBEE_OK. First packet is 1;
+151-byte buffer, and commits the count only on XBEE_OK. First packet is 1;
 rollover is 65535 -> 0. UART acceptance is not confirmed RF delivery; a transfer
 that later aborts remains counted. XBee copies the whole packet before returning.
 
@@ -158,7 +153,7 @@ operations must update their fields and validity flags in Cansat.
 
 Communication_ProcessCommand remains a no-op with a byte pointer and length.
 Received chunks are currently discarded after the stub call; they do not execute
-commands or change command IDs, execution status, or RX packet count. Exact
+commands or change execution status, or RX packet count. Exact
 command strings and framing remain to be defined. The future parser must assemble
 complete commands across chunks and reset partial parsing after RX loss/errors.
 
@@ -172,7 +167,7 @@ cmake --build --preset Debug
 cmake --build --preset Release
 ```
 
-Host tests compare all 153 bytes against a golden packet, check fixed offsets,
+Host tests compare all 151 bytes against a golden packet, check fixed offsets,
 16-bit signed and 24-bit unsigned encoding, native-unit scaling, sentinels/ranges,
 short buffers/team padding, and payloads containing comma/CR/NUL. They also check
 exact TX length, busy/error handling, count rollover, scheduling, and the inert

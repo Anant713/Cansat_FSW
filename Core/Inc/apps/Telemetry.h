@@ -4,8 +4,8 @@
 #include <stdint.h>
 typedef struct Cansat Cansat;
 
-#define TELEMETRY_BINARY_SIZE 153U
-#define TELEMETRY_FIELD_COUNT 45U
+#define TELEMETRY_BINARY_SIZE 151U
+#define TELEMETRY_FIELD_COUNT 44U
 #define TELEMETRY_CSV_CAPACITY 512U /* Includes CRLF and local NUL. */
 
 /* Shared quantization: native Cansat units -> binary wire values/sentinels.
@@ -17,5 +17,5 @@ size_t Telemetry_Encode(const Cansat *cansat, uint8_t *buffer, size_t capacity);
  * Ends CRLF, then local NUL. Returns length excluding NUL; zero on failure.
  * On failure, an available output buffer is cleared; never log a partial row. */
 size_t Telemetry_FormatCSV(const Cansat *cansat, char *buffer, size_t capacity);
-const char *Telemetry_CSVHeader(void); /* 45 names, CRLF, NUL. */
+const char *Telemetry_CSVHeader(void); /* 44 names, CRLF, NUL. */
 #endif

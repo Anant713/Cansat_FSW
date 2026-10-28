@@ -8,28 +8,28 @@
 #include <stddef.h>
 
 static StateMachineStatus status;
-static bool initialized, windowActive;
-static uint32_t windowStart, hdrmStart;
-static float windowAltitude;
+static bool initialized;
+static uint32_t hdrmStart;
+static uint32_t lastHeightSampleMs;
+static bool heightSampleSeen;
+_Static_assert(STATE_HEIGHT_CONFIRM_SAMPLES > 0U &&
+               STATE_HEIGHT_CONFIRM_SAMPLES <= UINT32_MAX, "Invalid height debounce count");
+
 static uint32_t groundPressurePa;
 
 const StateMachineStatus *StateMachine_GetStatus(void) { return &status; }
 
-static bool persist(CansatMissionState state, bool crossed, bool deployed)
+static bool persist(CansatMissionState state, bool deployed)
 {
     status.persistenceOK = MissionStore_Save((uint32_t)state |
-        (crossed ? 0x100U : 0U) | (deployed ? 0x200U : 0U) |
+        (deployed ? 0x200U : 0U) |
         (groundPressurePa << MISSION_PRESSURE_SHIFT));
     return status.persistenceOK;
 }
 
 static void enter(Cansat *c)
 {
-    windowActive = false;
-    status.reactionWheelRequested = c->missionState == CANSAT_STATE_DESCENT_1 ||
-                                   c->missionState == CANSAT_STATE_DESCENT_2;
-    /* Software enable only; PWM generation on PB5 is added with control later. */
-    c->actuators.reactionWheel.enabled = status.reactionWheelRequested;
+    status.heightConfirmCount = 0;
     if (c->missionState >= CANSAT_STATE_ASCENT && c->missionState <= CANSAT_STATE_DESCENT_2)
         CameraControl_Start(&c->camera);
     if (c->missionState == CANSAT_STATE_DESCENT_2 && !status.deploymentComplete) {
@@ -52,8 +52,8 @@ bool StateMachine_Init(Cansat *c)
 {
     if (!c) return false;
     initialized = false;
+    heightSampleSeen = false;
     status = (StateMachineStatus){0};
-    windowActive = false;
     uint32_t payload = 0;
     groundPressurePa = 0;
     c->navigation.groundPressurePa = 0;
@@ -61,12 +61,11 @@ bool StateMachine_Init(Cansat *c)
     MissionStoreResult result = MissionStore_Load(&payload);
     c->missionState = CANSAT_STATE_UNINITIALIZED;
     if (result == MISSION_STORE_ERROR) return false;
-    if (result == MISSION_STORE_EMPTY && !persist(CANSAT_STATE_LAUNCH_PAD, false, false)) return false;
+    if (result == MISSION_STORE_EMPTY && !persist(CANSAT_STATE_LAUNCH_PAD, false)) return false;
     status.recovered = result == MISSION_STORE_VALID;
     groundPressurePa = (payload >> MISSION_PRESSURE_SHIFT) & MISSION_PRESSURE_MASK;
     c->navigation.groundPressurePa = (float)groundPressurePa;
     status.persistenceOK = true;
-    status.crossedArmHeight = (payload & 0x100U) != 0;
     status.deploymentComplete = (payload & 0x200U) != 0;
     c->missionState = (CansatMissionState)(payload & 0xffU);
     initialized = true;
@@ -81,7 +80,7 @@ bool StateMachine_BeginNewMission(Cansat *c)
     (void)MissionStore_Load(&ignored);
     uint32_t previousPressure = groundPressurePa;
     groundPressurePa = 0;
-    if (!persist(CANSAT_STATE_LAUNCH_PAD, false, false)) {
+    if (!persist(CANSAT_STATE_LAUNCH_PAD, false)) {
         groundPressurePa = previousPressure;
         return false;
     }
@@ -91,6 +90,7 @@ bool StateMachine_BeginNewMission(Cansat *c)
     Switches_Buzzer(false);
     CameraControl_Stop(&c->camera);
     status = (StateMachineStatus){.persistenceOK = true};
+    heightSampleSeen = false;
     c->missionState = CANSAT_STATE_LAUNCH_PAD;
     initialized = true;
     enter(c);
@@ -103,7 +103,7 @@ bool StateMachine_SetGroundPressure(Cansat *c, float pressurePa)
         c->missionState != CANSAT_STATE_LAUNCH_PAD || !isfinite(pressurePa) ||
         pressurePa < 30000.0f || pressurePa > 110000.0f) return false;
     groundPressurePa = (uint32_t)roundf(pressurePa);
-    if (!persist(c->missionState, status.crossedArmHeight, status.deploymentComplete)) {
+    if (!persist(c->missionState, status.deploymentComplete)) {
         groundPressurePa = 0;
         return false;
     }
@@ -114,9 +114,17 @@ bool StateMachine_SetGroundPressure(Cansat *c, float pressurePa)
 static void transition(Cansat *c, CansatMissionState next)
 {
     /* Commit before actions: a reset replays entry for the committed state. */
-    if (!persist(next, status.crossedArmHeight, status.deploymentComplete)) return;
+    if (!persist(next, status.deploymentComplete)) return;
     c->missionState = next;
     enter(c);
+}
+
+static bool confirmed(bool condition)
+{
+    if (!condition) status.heightConfirmCount = 0;
+    else if (status.heightConfirmCount < STATE_HEIGHT_CONFIRM_SAMPLES)
+        ++status.heightConfirmCount;
+    return status.heightConfirmCount >= STATE_HEIGHT_CONFIRM_SAMPLES;
 }
 
 void StateMachine_Update(Cansat *c)
@@ -129,7 +137,7 @@ void StateMachine_Update(Cansat *c)
         status.hdrmActive = false;
         status.deploymentComplete = true;
         c->actuators.parafoilDeployed = true;
-        (void)persist(c->missionState, status.crossedArmHeight, true);
+        (void)persist(c->missionState, true);
     }
     if (!status.persistenceOK) {
         /* No automatic flash retry loop. Timed output shutdown above still runs. */
@@ -141,35 +149,46 @@ void StateMachine_Update(Cansat *c)
         Switches_Update(&c->switches);
         return;
     }
-    bool valid = c->navigation.altitudeValid && isfinite(c->navigation.altitude) &&
-        (uint32_t)(now - c->navigation.altitudeTimestampMs) <= STATE_ALTITUDE_MAX_AGE_MS;
-    if (!valid) { windowActive = false; Switches_Update(&c->switches); return; }
-    float height = c->navigation.altitude;
+    bool valid = c->bmp.valid && c->bmp.heightValid && isfinite(c->bmp.relativeHeightM) &&
+        (uint32_t)(now - c->bmp.timestamp_ms) <= STATE_ALTITUDE_MAX_AGE_MS;
+    if (!valid) {
+        status.heightConfirmCount = 0;
+        Switches_Update(&c->switches);
+        return;
+    }
+    /* Acquisition retains its last sample between reads. Do not debounce loop
+     * iterations: each BMP timestamp can contribute at most once. */
+    if (heightSampleSeen && c->bmp.timestamp_ms == lastHeightSampleMs) {
+        Switches_Update(&c->switches);
+        return;
+    }
+    if (heightSampleSeen &&
+        (uint32_t)(c->bmp.timestamp_ms - lastHeightSampleMs) > STATE_ALTITUDE_MAX_AGE_MS)
+        status.heightConfirmCount = 0;
+    lastHeightSampleMs = c->bmp.timestamp_ms;
+    heightSampleSeen = true;
+    float height = c->bmp.relativeHeightM;
     switch (c->missionState) {
     case CANSAT_STATE_LAUNCH_PAD:
-        if (height > STATE_LAUNCH_HEIGHT_M) transition(c, CANSAT_STATE_ASCENT);
+        if (confirmed(height > STATE_LAUNCH_HEIGHT_M)) transition(c, CANSAT_STATE_ASCENT);
         break;
     case CANSAT_STATE_ASCENT:
-        if (!status.crossedArmHeight && height > STATE_DESCENT_ARM_HEIGHT_M) {
-            if (!persist(c->missionState, true, false)) break;
-            status.crossedArmHeight = true;
+        if (!status.maxHeightValid || height > status.maxHeightM) {
+            status.maxHeightM = height;
+            status.maxHeightValid = true;
         }
-        if (!status.crossedArmHeight) break;
-        if (!windowActive) {
-            windowActive = true; windowStart = now; windowAltitude = height;
-        } else if ((uint32_t)(now - windowStart) >= STATE_DESCENT_WINDOW_MS) {
-            if (windowAltitude - height > STATE_DESCENT_DROP_M)
-                transition(c, CANSAT_STATE_DESCENT_1);
-            windowStart = now; windowAltitude = height;
-        }
+        if (confirmed(status.maxHeightM > STATE_DESCENT_MIN_PEAK_M &&
+                      status.maxHeightM - height > STATE_DESCENT_DROP_M))
+            transition(c, CANSAT_STATE_DESCENT_1);
         break;
     case CANSAT_STATE_DESCENT_1:
-        if (height < STATE_PARAFOIL_HEIGHT_M) transition(c, CANSAT_STATE_DESCENT_2);
+        if (confirmed(height < STATE_PARAFOIL_HEIGHT_M)) transition(c, CANSAT_STATE_DESCENT_2);
         break;
     case CANSAT_STATE_DESCENT_2:
-        if (height < STATE_TOUCHDOWN_HEIGHT_M) transition(c, CANSAT_STATE_TOUCHDOWN);
+        if (confirmed(height < STATE_TOUCHDOWN_HEIGHT_M)) transition(c, CANSAT_STATE_TOUCHDOWN);
         break;
     default: break;
     }
     Switches_Update(&c->switches);
 }
+

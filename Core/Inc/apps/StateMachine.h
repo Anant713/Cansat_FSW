@@ -2,21 +2,24 @@
 #include "apps/Cansat.h"
 
 #define STATE_LAUNCH_HEIGHT_M 30.0f
-#define STATE_DESCENT_ARM_HEIGHT_M 800.0f
-#define STATE_DESCENT_DROP_M 2.0f
-#define STATE_DESCENT_WINDOW_MS 5000U
+#define STATE_DESCENT_DROP_M 20.0f
+#define STATE_DESCENT_MIN_PEAK_M 700.0f
 #define STATE_PARAFOIL_HEIGHT_M 600.0f
 #define STATE_TOUCHDOWN_HEIGHT_M 20.0f
 #define STATE_HDRM_PULSE_MS 2000U
 #define STATE_ALTITUDE_MAX_AGE_MS 1000U
+#ifndef STATE_HEIGHT_CONFIRM_SAMPLES
+#define STATE_HEIGHT_CONFIRM_SAMPLES 5U
+#endif
 
 typedef struct {
     bool recovered;
     bool persistenceOK;
-    bool crossedArmHeight;
+    float maxHeightM; /* Highest fresh BMP height observed in ASCENT; RAM-only. */
+    bool maxHeightValid;
+    uint32_t heightConfirmCount; /* Consecutive qualifying fresh BMP samples. */
     bool hdrmActive;
     bool deploymentComplete;
-    bool reactionWheelRequested; /* Driver integration pending; not hardware feedback. */
 } StateMachineStatus;
 
 bool StateMachine_Init(Cansat *cansat);

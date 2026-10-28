@@ -13,13 +13,6 @@ bool Control_Init(void);
 void Control_Update(Cansat *cansat);
 
 
-/* Reaction wheel / attitude control */
-
-bool RWSController_Init(void);
-
-void RWSController_Update(Cansat *cansat);
-
-
 /* Parafoil / DCS guidance */
 
 bool DCSGuidance_Init(void);

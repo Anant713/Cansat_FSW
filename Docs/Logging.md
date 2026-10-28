@@ -1,7 +1,7 @@
 # SD CSV logging
 
 `Logging_Write(&flight_cansat)` collects the current Cansat values and writes one
-CSV row through the SDCard driver. Rows contain the same 45 fields, in the same
+CSV row through the SDCard driver. Rows contain the same 44 fields, in the same
 order, with the same scaling, rounding, validity checks, and reserved sentinels as
 [binary XBee telemetry](Communication.md). Both use the shared `Telemetry` encoder.
 Logging does not modify Cansat or increment the telemetry packet counter.
@@ -18,16 +18,19 @@ NUL terminator. The column definitions and scales are in Communication.md.
 
 `Logging_Init()` mounts the card and creates the first unused filename from
 `0:/LOG0000.CSV` through `0:/LOG9999.CSV`. Existing files are never overwritten.
-Each new file starts with a 45-column header. The header and every data row are
-synced before returning. A 512-byte buffer holds each formatted data row.
+Each new file starts with a 44-column header written with `SDCard_WriteString`,
+then closed. Each log calls `SDCard_OpenAppend`, writes exactly one CRLF CSV row
+with `SDCard_WriteString`, and calls `SDCard_CloseFile` to flush it, matching
+`Tests/test_sd_text.c`. A 512-byte buffer holds each formatted data row.
 
 `Logging_IsReady()` reports whether rows can be written; `Logging_GetFilename()`
-exposes the selected filename. A write or sync failure disables further logging.
+exposes the selected filename. An open, write or close failure disables further logging.
 There is no automatic retry or remount in the loop. `Logging_Stop()` closes the
 file; after resolving the SD error, an explicit new initialization can start a
 new file. Driver recovery may also require `SDCard_DeInit()`. A failed close can
 be retried. Calling Init while the file remains open does not restart logging.
-`SDCard_GetLastResult()` exposes the latest FatFs result.
+`SDCard_GetLastResult()` exposes the latest FatFs result (a cleanup close can
+replace an earlier write error; a false Logging_Write still indicates failure).
 
 ## Superloop timing
 
@@ -45,13 +48,13 @@ increment the count or prevent logging.
 
 Elapsed-time checks handle HAL tick rollover and do not produce catch-up bursts.
 These are nominal 2 Hz/1 Hz schedules, not guaranteed minimum rates: the existing
-sensor and SD write/sync APIs block, so a slow operation can delay the next pass.
+sensor and SD open/write/close APIs block, so a slow operation can delay the next pass.
 The state machine calls `Logging_Stop()` on touchdown, including recovered touchdown.
 
 ## Verification
 
 Run `Tests/host/run_logging_tests.ps1`, `run_communication_tests.ps1`, and
-`run_acquisition_tests.ps1` from PowerShell. Tests check all 45 CSV values against
+`run_acquisition_tests.ps1` from PowerShell. Tests check all 44 CSV values against
 decoded binary fields, signed values/sentinels, buffer bounds, headers, filename
 collisions, SD failures, independent scheduling, tick rollover, and packet count
 ordering. Debug and Release firmware builds include Telemetry and Logging.

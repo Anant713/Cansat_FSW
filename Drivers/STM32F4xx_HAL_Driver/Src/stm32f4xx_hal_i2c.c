@@ -2636,7 +2636,7 @@ HAL_StatusTypeDef HAL_I2C_Mem_Read(I2C_HandleTypeDef *hi2c, uint16_t DevAddress,
     /* Wait until BUSY flag is reset */
     if (I2C_WaitOnFlagUntilTimeout(hi2c, I2C_FLAG_BUSY, SET, I2C_TIMEOUT_BUSY_FLAG, tickstart) != HAL_OK)
     {
-      return HAL_BUSY;
+            return HAL_BUSY;
     }
 
     /* Process Locked */
