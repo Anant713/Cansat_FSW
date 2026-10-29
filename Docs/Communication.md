@@ -130,7 +130,7 @@ force an out-of-range measurement into a field.
   27 bytes. The default is the PDF example `2026-IN-SPACe-CAN-7USAT-016`;
   change `CANSAT_DEFAULT_TEAM_ID` if the flight team's actual ID differs.
 
-## Integration and reception placeholder
+## Integration and ground commands
 
 `Communication_FormatTelemetry(cansat, uint8_t *buffer, capacity)` serializes the
 current count and returns 151, or zero for invalid arguments/team ID/insufficient
@@ -146,16 +146,89 @@ Cansat and calls Communication_Update each pass. It services XBee, reads at most
 256 incoming bytes. FlightApp separately attempts telemetry every 500 ms (2 Hz)
 while telemetry.enabled is true, and logs CSV every 1000 ms (1 Hz). These are
 nominal intervals: blocking sensor/SD operations can delay a loop pass. See
-[CSV logging](Logging.md). The enable flag defaults false until SEND_TELEM/state logic is supplied; it can
-be set in the debugger for a bench test. Busy/error sends do not build a backlog.
+[CSV logging](Logging.md). The enable flag defaults false and is controlled by
+TELEMETRY_ON/OFF. Busy/error sends do not build a backlog.
 Startup snapshots servo commands. Future estimation/control/state-machine
 operations must update their fields and validity flags in Cansat.
 
-Communication_ProcessCommand remains a no-op with a byte pointer and length.
-Received chunks are currently discarded after the stub call; they do not execute
-commands or change execution status, or RX packet count. Exact
-command strings and framing remain to be defined. The future parser must assemble
-complete commands across chunks and reset partial parsing after RX loss/errors.
+Commands are three **binary bytes**, not ASCII hex strings:
+
+| ID | Command | Bytes | Execution |
+| --- | --- | --- | --- |
+| 1 | TELEMETRY_ON | A5 01 5A | Enables scheduled telemetry |
+| 2 | TELEMETRY_OFF | A5 02 5A | Disables future scheduled telemetry |
+| 3 | CALIBRATE_SENSORS | A5 03 5A | Launch-pad initialization, ground reference and stationary gyro calibration |
+
+`Communication_ProcessCommand` preserves partial framing across chunks and can
+consume multiple packets in one chunk. A5 restarts framing; malformed frames and
+unknown IDs are ignored. Any non-OK XBee read discards partial framing. Each
+recognized packet updates `lastReceivedCommand` and increments `receivedPacketCount`
+modulo 65536, including repeated commands. `commandExecuted` describes the latest
+received command. `lastExecutedCommand` separately retains the last successful
+command ID in RAM; it is not an additional telemetry/CSV field. Both IDs default
+to zero (none). The existing 151-byte layout remains unchanged. Numeric command
+IDs are distinct from the existing team ID string.
+
+OFF does not abort a packet already queued/in progress, disable XBee reception,
+or stop SD logging. ON resumes the flight loop's normal telemetry schedule. There
+is no separate command acknowledgement packet. The OFF result can be observed in
+SD logs/debugger; scheduled telemetry is then disabled. Explicit calls to
+`Communication_SendTelemetry` still bypass the scheduled enable gate.
+
+Command 3 is accepted for execution only in LAUNCH_PAD with healthy mission
+persistence. Keep the CanSat stationary at launch ground. It reinitializes BMP,
+AHT20, BMI270 and IIS2MDC; GNSS and battery are not restarted. Existing software
+corrections are saved before initialization and reapplied afterward. Old sensor
+snapshots are invalidated so failed initialization cannot expose old data as fresh.
+
+- BMP initialization averages 16 readings after settling, establishing a new
+  ground pressure. This is height-zero calibration, not calibration against a
+  reference thermometer/barometer. Existing temperature/pressure offsets are kept.
+- AHT20 initialization checks/restores factory calibration. It does not infer a
+  humidity offset from stationarity; any existing humidity offset is retained.
+- BMI270 initialization alone clears gyro bias. The command additionally calls
+  `BMI270_StartGyroCalibration`: 128 fresh samples, 10-second timeout (macros in
+  SensorAcquisition.h). Ordinary acquisition advances sampling without waiting.
+  Motion, timeout or I/O failure prevents success. Accelerometer correction is
+  preserved; no gravity vector is subtracted as if it were a zero-g bias.
+- IIS2MDC initialization enables continuous hardware offset cancellation. Existing
+  hard/soft-iron coefficients are reapplied. It does not derive new coefficients:
+  that requires a separate multi-orientation calibration. With no prior correction,
+  the driver's identity correction remains in use.
+
+The initial reinitialization phase blocks the main loop for several seconds
+(BMP alone about 2.7 seconds). UART DMA/interrupts remain active, within queue
+capacity. Sensor acquisition, logging and telemetry schedules resume afterward;
+gyro sampling then progresses asynchronously. This is a ground-only operation,
+not a guarantee of uninterrupted 1/2 Hz output during calibration.
+
+`commandExecuted` remains false while pending and becomes true only after gyro
+completion and a successful flash save of the new ground pressure through
+`StateMachine_RecalibrateGroundPressure`. The flash reference replaces the previous
+launch-pad reference. Failed operations can have partially reinitialized sensors;
+there is no multi-sensor rollback. Repeat calibration after resolving the cause.
+Existing startup recovery still establishes a fresh BMP driver reference at boot;
+restoring the saved reference into BMP on an airborne reboot remains separate work.
+
+Repeated calibration requests while pending count as received packets but do not
+restart sampling. Telemetry commands remain usable during asynchronous sampling.
+Calibration completion updates the historical `lastExecutedCommand`; it changes
+`commandExecuted` only if calibration is still the latest received command.
+The combined acquisition/logging/telemetry test does not initialize the mission
+state machine, so calibration is rejected there; use flight firmware for command 3.
+
+UART4 RX uses circular DMA (`HAL_UARTEx_ReceiveToIdle_DMA`). UART IDLE and DMA
+half/full-transfer interrupt callbacks copy new bytes into the driver's 2048-byte
+software queue. `Communication_Update`, called every main-loop pass, services
+the driver and drains up to 256 bytes through nonblocking `XBee_Read`. Parsing and
+command execution occur in main-loop context, never in interrupt callbacks.
+IDLE events and read chunks are not packet boundaries.
+
+A non-DMA interrupt implementation could receive each byte with RXNE interrupts,
+enqueue it, and use the same main-loop parser. Pure polling of the UART hardware
+is different: bytes are not collected while the main loop is occupied by sensor
+or SD operations. Polling an interrupt/DMA-filled software queue, as this code
+does, retains asynchronous reception. The current DMA driver is unchanged.
 
 ## Verification
 
@@ -170,5 +243,8 @@ cmake --build --preset Release
 Host tests compare all 151 bytes against a golden packet, check fixed offsets,
 16-bit signed and 24-bit unsigned encoding, native-unit scaling, sentinels/ranges,
 short buffers/team padding, and payloads containing comma/CR/NUL. They also check
-exact TX length, busy/error handling, count rollover, scheduling, and the inert
-command stub. Hardware RF delivery remains a board test.
+exact TX length, busy/error handling, count rollover, scheduling, command chunk
+splits, back-to-back packets, malformed frames, resynchronization after RX errors,
+and received/executed command bookkeeping. Tests also cover asynchronous calibration,
+duplicate requests, initialization/motion/timeout failures, and reference persistence.
+Hardware calibration quality and RF delivery remain board tests.

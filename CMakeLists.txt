@@ -25,7 +25,7 @@ set(CMAKE_PROJECT_NAME Documents)
 
 # Select exactly one application entry point and its explicit dependencies.
 set(FIRMWARE_APP "flight" CACHE STRING "Firmware application to build")
-set_property(CACHE FIRMWARE_APP PROPERTY STRINGS flight test_acquisition_logging test_acquisition_logging_telemetry test_template test_sd test_sd_text test_spi test_sensors test_gnss test_xbee test_camera test_servos test_switches GNSS_SatInView GNSS_Nav test_battery)
+set_property(CACHE FIRMWARE_APP PROPERTY STRINGS flight test_acquisition_logging test_acquisition_logging_telemetry test_template test_sd test_sd_text test_spi test_sensors test_gnss test_xbee test_camera test_servos test_switches test_battery)
 
 if(FIRMWARE_APP STREQUAL "flight")
     set(FIRMWARE_SOURCES
@@ -55,17 +55,15 @@ elseif(FIRMWARE_APP STREQUAL "test_acquisition_logging")
 elseif(FIRMWARE_APP STREQUAL "test_acquisition_logging_telemetry")
     set(FIRMWARE_SOURCES Tests/test_acquisition_logging_telemetry.c Core/Src/apps/Cansat.c
         Core/Src/apps/SensorAcquisition.c Core/Src/apps/Logging.c Core/Src/apps/Telemetry.c
-        Core/Src/apps/Communication.c)
+        Core/Src/apps/Communication.c Core/Src/apps/StateMachine.c
+        Core/Src/apps/CameraControl.c Core/Src/drivers/MissionStore.c
+        Core/Src/drivers/MissionStore_HAL.c)
 elseif(FIRMWARE_APP STREQUAL "test_spi")
     set(FIRMWARE_SOURCES Tests/testspi.c)
 elseif(FIRMWARE_APP STREQUAL "test_sensors")
     set(FIRMWARE_SOURCES Tests/test_sensors.c)
 elseif(FIRMWARE_APP STREQUAL "test_gnss")
     set(FIRMWARE_SOURCES Tests/test_gnss.c)
-elseif(FIRMWARE_APP STREQUAL "GNSS_SatInView")
-    set(FIRMWARE_SOURCES Tests/GNSS_SatInView.c)
-elseif(FIRMWARE_APP STREQUAL "GNSS_Nav")
-    set(FIRMWARE_SOURCES Tests/GNSS_Nav.c)
 elseif(FIRMWARE_APP STREQUAL "test_xbee")
     set(FIRMWARE_SOURCES Tests/test_xbee.c)
 elseif(FIRMWARE_APP STREQUAL "test_camera")
@@ -78,7 +76,7 @@ elseif(FIRMWARE_APP STREQUAL "test_battery")
     set(FIRMWARE_SOURCES Tests/test_battery.c)
 else()
     message(FATAL_ERROR
-        "Unknown FIRMWARE_APP '${FIRMWARE_APP}'. Choose flight, test_acquisition_logging, test_acquisition_logging_telemetry, test_template, test_sd, test_sd_text, test_spi, test_sensors, test_gnss, test_xbee, test_camera, test_servos, test_switches, GNSS_SatInView, GNSS_Nav or test_battery.")
+        "Unknown FIRMWARE_APP '${FIRMWARE_APP}'. Choose flight, test_acquisition_logging, test_acquisition_logging_telemetry, test_template, test_sd, test_sd_text, test_spi, test_sensors, test_gnss, test_xbee, test_camera, test_servos, test_switches or test_battery.")
 endif()
 
 # Enable compile command to ease indexing with e.g. clangd
@@ -93,11 +91,6 @@ enable_language(C ASM)
 
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
-if(FIRMWARE_APP STREQUAL "GNSS_SatInView")
-    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE GNSS_ENABLE_GSV=1)
-elseif(FIRMWARE_APP STREQUAL "GNSS_Nav")
-    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE GNSS_ENABLE_NAV=1)
-endif()
 set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME "${FIRMWARE_APP}")
 
 # Add STM32CubeMX generated sources

@@ -87,9 +87,10 @@ typedef struct
     uint32_t uptimeMs;            /* milliseconds; packed as unsigned 24-bit on wire */
     uint16_t packetCount;         /* Packets accepted by UART TX, modulo 65536. */
     uint16_t receivedPacketCount; /* Complete ground packets, NOT UART chunks. */
-    uint8_t lastReceivedCommand;  /* Command ID; zero until command processing is defined. */
-    bool commandExecuted;
-    bool enabled;                /* Future SEND_TELEM/state logic controls this. */
+    uint8_t lastReceivedCommand;  /* 0 none, 1 telemetry on, 2 off, 3 calibrate. */
+    uint8_t lastExecutedCommand;  /* Last successful command ID; RAM-only, not a wire field. */
+    bool commandExecuted;        /* Success of lastReceivedCommand, not historical success. */
+    bool enabled;                /* Controlled by TELEMETRY_ON / TELEMETRY_OFF. */
 } TelemetryState;
 
 /* ---------- System status ---------- */

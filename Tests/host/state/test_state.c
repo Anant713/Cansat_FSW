@@ -166,6 +166,23 @@ int main(void)
     assert(StateMachine_Init(&c));
     c.bmp = (BMP280Data){.pressure=95461, .valid=true, .timestamp_ms=tick};
     BarometricAltitude_Update(&c); assert(!c.navigation.altitudeValid);
+    /* Explicit launch-pad recalibration replaces an already persisted reference. */
+    memset(flash, 0xff, sizeof(flash)); c = (Cansat){0};
+    assert(StateMachine_Init(&c));
+    assert(StateMachine_SetGroundPressure(&c, 100000));
+    assert(!StateMachine_SetGroundPressure(&c, 101000));
+    assert(StateMachine_RecalibrateGroundPressure(&c, 101234.4f));
+    assert(c.navigation.groundPressurePa == 101234 && !c.navigation.altitudeValid);
+    c = (Cansat){0}; assert(StateMachine_Init(&c));
+    assert(c.navigation.groundPressurePa == 101234);
+    c.missionState = CANSAT_STATE_ASCENT;
+    assert(!StateMachine_RecalibrateGroundPressure(&c, 100000));
+    c.missionState = CANSAT_STATE_LAUNCH_PAD;
+    assert(!StateMachine_RecalibrateGroundPressure(&c, NAN));
+    writesLeft = 0;
+    assert(!StateMachine_RecalibrateGroundPressure(&c, 100000));
+    assert(c.navigation.groundPressurePa == 101234 && !StateMachine_GetStatus()->persistenceOK);
+    writesLeft = -1;
     /* Nonempty flash with no committed record is not a fresh launch. */
     memset(flash, 0xff, sizeof(flash)); flash[0] = 0;
     assert(!StateMachine_Init(&c) && c.missionState == CANSAT_STATE_UNINITIALIZED);

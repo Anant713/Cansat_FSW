@@ -4,7 +4,7 @@
 /* Match the address pins and the receiver's current baud rate on the board. */
 #define ACQUISITION_BMP_ADDRESS BMP280_ADDRESS_HIGH // 
 #define ACQUISITION_BMI_ADDRESS BMI270_ADDRESS_LOW
-#define ACQUISITION_GNSS_BAUD 9600U
+#define ACQUISITION_GNSS_BAUD GNSS_EXPECTED_BAUD
 #define HUMIDITY_PERIOD_MS 2000U
 
 extern I2C_HandleTypeDef hi2c2;
@@ -17,9 +17,12 @@ static IIS2MDC mag;
 static bool gnssInitialized;
 static bool batteryInitialized;
 static uint32_t lastHumidityStart;
+static SensorCalibrationStatus calibrationStatus;
+static uint32_t calibrationStarted;
 
 bool SensorAcquisition_Init(void)
 {
+    calibrationStatus = SENSOR_CAL_IDLE;
     /* Do not short-circuit startup when one device is absent. */
     bool bmpOK = BMP280_Init(&bmp, &hi2c2, ACQUISITION_BMP_ADDRESS);
     bool ahtOK = AHT20_Init(&aht, &hi2c2);
@@ -30,6 +33,58 @@ bool SensorAcquisition_Init(void)
     lastHumidityStart = HAL_GetTick() - HUMIDITY_PERIOD_MS;
 
     return bmpOK && ahtOK && bmiOK && magOK && batteryInitialized && gnssInitialized;
+}
+
+bool SensorAcquisition_StartCalibration(Cansat *c)
+{
+    if (c == NULL) return false;
+    if (calibrationStatus == SENSOR_CAL_RUNNING) return true;
+    BMI270Calibration imuCalibration;
+    SensorCalibration3D magneticCalibration;
+    bool imuSaved = BMI270_GetCalibration(&bmi, &imuCalibration);
+    bool magSaved = IIS2MDC_GetCalibration(&mag, &magneticCalibration);
+    float temperatureOffset = bmp.initialized ? bmp.temperature_offset_c : 0.0f;
+    float pressureOffset = bmp.initialized ? bmp.pressure_offset_pa : 0.0f;
+    float humidityOffset = aht.initialized ? aht.humidity_offset_rh : 0.0f;
+    calibrationStatus = SENSOR_CAL_FAILED;
+    /* Old snapshots must not survive a failed reinitialization as valid data. */
+    c->bmp.valid = c->bmp.heightValid = false;
+    c->env.valid = c->bmi.valid = c->mag.valid = false;
+    c->navigation.altitudeValid = false;
+    bool bmpOK = BMP280_Init(&bmp, &hi2c2, ACQUISITION_BMP_ADDRESS);
+    if (bmpOK) bmpOK = BMP280_SetCalibration(&bmp, temperatureOffset, pressureOffset);
+    bool ahtOK = AHT20_Init(&aht, &hi2c2);
+    if (ahtOK) ahtOK = AHT20_SetCalibration(&aht, humidityOffset);
+    bool bmiOK = BMI270_Init(&bmi, &hi2c2, ACQUISITION_BMI_ADDRESS);
+    if (bmiOK && imuSaved) bmiOK = BMI270_SetCalibration(&bmi, &imuCalibration);
+    bool magOK = IIS2MDC_Init(&mag, &hi2c2);
+    if (magOK && magSaved) magOK = IIS2MDC_SetCalibration(&mag, &magneticCalibration);
+    lastHumidityStart = HAL_GetTick() - HUMIDITY_PERIOD_MS;
+    if (!(bmpOK && ahtOK && bmiOK && magOK)) return false;
+    if (!BMI270_StartGyroCalibration(&bmi, CALIBRATION_GYRO_SAMPLES,
+                                    CALIBRATION_GYRO_TIMEOUT_MS)) return false;
+    calibrationStarted = HAL_GetTick();
+    calibrationStatus = SENSOR_CAL_RUNNING;
+    return true;
+}
+
+SensorCalibrationStatus SensorAcquisition_GetCalibrationStatus(void)
+{
+    if (calibrationStatus == SENSOR_CAL_RUNNING) {
+        if (bmi.calibration_state == BMI270_CAL_DONE)
+            calibrationStatus = SENSOR_CAL_SUCCESS;
+        else if (bmi.calibration_state != BMI270_CAL_COLLECTING ||
+                 (uint32_t)(HAL_GetTick() - calibrationStarted) >= CALIBRATION_GYRO_TIMEOUT_MS) {
+            BMI270_CancelGyroCalibration(&bmi);
+            calibrationStatus = SENSOR_CAL_FAILED;
+        }
+    }
+    return calibrationStatus;
+}
+
+float SensorAcquisition_GetGroundPressure(void)
+{
+    return bmp.initialized && bmp.groundPressureValid ? bmp.groundPressurePa : 0.0f;
 }
 
 bool SensorAcquisition_UpdateBMP(Cansat *cansat)

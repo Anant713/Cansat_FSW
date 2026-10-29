@@ -1,7 +1,6 @@
 {
     "version": 3,
     "configurePresets": [
-        { "name": "GNSS_Nav", "inherits": "default", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "FIRMWARE_APP": "GNSS_Nav" } },
         {
             "name": "TestAcquisitionLoggingTelemetry", "inherits": "default",
             "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "FIRMWARE_APP": "test_acquisition_logging_telemetry" }
@@ -11,7 +10,6 @@
             "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "FIRMWARE_APP": "test_acquisition_logging" }
         },
         { "name": "TestBattery", "inherits": "default", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "FIRMWARE_APP": "test_battery" } },
-        { "name": "GNSS_SatInView", "inherits": "default", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "FIRMWARE_APP": "GNSS_SatInView" } },
         { "name": "TestServos", "inherits": "default", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "FIRMWARE_APP": "test_servos" } },
         { "name": "TestSwitches", "inherits": "default", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "FIRMWARE_APP": "test_switches" } },
         {
@@ -105,11 +103,9 @@
         }
     ],
     "buildPresets": [
-        { "name": "GNSS_Nav", "configurePreset": "GNSS_Nav" },
         { "name": "TestAcquisitionLoggingTelemetry", "configurePreset": "TestAcquisitionLoggingTelemetry" },
         { "name": "TestAcquisitionLogging", "configurePreset": "TestAcquisitionLogging" },
         { "name": "TestBattery", "configurePreset": "TestBattery" },
-        { "name": "GNSS_SatInView", "configurePreset": "GNSS_SatInView" },
         { "name": "TestServos", "configurePreset": "TestServos" },
         { "name": "TestSwitches", "configurePreset": "TestSwitches" },
         {

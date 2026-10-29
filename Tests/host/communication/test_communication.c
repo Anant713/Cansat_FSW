@@ -1,5 +1,7 @@
 #include "apps/Communication.h"
 #include "apps/Cansat.h"
+#include "apps/SensorAcquisition.h"
+#include "apps/StateMachine.h"
 #include "drivers/XBee.h"
 #include <assert.h>
 #include <math.h>
@@ -14,6 +16,24 @@ static unsigned sends, processes, reads;
 static uint8_t sent[XBEE_TX_CAPACITY + 1U];
 static uint16_t sentLength;
 static const uint8_t incoming[] = {'C', 'M', 'D', 0, 'X', '\r'};
+static StateMachineStatus missionStatus;
+static SensorCalibrationStatus calibrationResult;
+static bool calibrationStartOK, referenceSaveOK;
+static unsigned calibrationStarts, referenceSaves;
+const StateMachineStatus *StateMachine_GetStatus(void) { return &missionStatus; }
+bool SensorAcquisition_StartCalibration(Cansat *c)
+{
+    assert(c != NULL); ++calibrationStarts;
+    calibrationResult = calibrationStartOK ? SENSOR_CAL_RUNNING : SENSOR_CAL_FAILED;
+    return calibrationStartOK;
+}
+SensorCalibrationStatus SensorAcquisition_GetCalibrationStatus(void) { return calibrationResult; }
+float SensorAcquisition_GetGroundPressure(void) { return 101234.0f; }
+bool StateMachine_RecalibrateGroundPressure(Cansat *c, float pressure)
+{
+    assert(c != NULL && pressure == 101234.0f); ++referenceSaves;
+    return referenceSaveOK && c->missionState == CANSAT_STATE_LAUNCH_PAD;
+}
 
 uint32_t HAL_GetTick(void) { return tick; }
 XBeeResult XBee_Init(UART_HandleTypeDef *uart)
@@ -268,7 +288,100 @@ static void test_send_and_service(void)
     assert(memcmp(&before, &c, sizeof(c)) == 0);
     assert(!Communication_SendTelemetry(NULL)); Communication_Update(NULL);
     initResult = XBEE_IO_ERROR; assert(!Communication_Init());
-    puts("UART acceptance, counter rollover, continuous RX service and inert command placeholder passed");
+    puts("UART acceptance, counter rollover and continuous RX service passed");
+}
+
+static void test_commands(void)
+{
+    const uint8_t on[] = {0xa5, 1, 0x5a};
+    const uint8_t off[] = {0xa5, 2, 0x5a};
+    const uint8_t calibrate[] = {0xa5, 3, 0x5a};
+    Cansat c;
+    initResult = readResult = XBEE_OK;
+    for (size_t split = 0; split <= sizeof(on); ++split) {
+        Cansat_Init(&c);
+        assert(Communication_Init());
+        Communication_ProcessCommand(&c, on, split);
+        if (split < sizeof(on)) assert(!c.telemetry.enabled);
+        Communication_ProcessCommand(&c, on + split, sizeof(on) - split);
+        assert(c.telemetry.enabled && c.telemetry.lastReceivedCommand == 1);
+        assert(c.telemetry.commandExecuted && c.telemetry.lastExecutedCommand == 1);
+        assert(c.telemetry.receivedPacketCount == 1);
+    }
+    Communication_ProcessCommand(&c, off, sizeof(off));
+    assert(!c.telemetry.enabled && c.telemetry.lastExecutedCommand == 2);
+    assert(c.telemetry.lastReceivedCommand == 2 && c.telemetry.commandExecuted);
+    Communication_ProcessCommand(&c, calibrate, sizeof(calibrate));
+    assert(c.telemetry.lastReceivedCommand == 3 && !c.telemetry.commandExecuted);
+    assert(c.telemetry.lastExecutedCommand == 2 && c.telemetry.receivedPacketCount == 3);
+
+    const uint8_t malformed[] = {0, 0xa5, 4, 0x5a, 0xa5, 1, 0, 0x5a,
+                                 'A', '5', ' ', '0', '1', ' ', '5', 'A'};
+    Cansat before = c;
+    Communication_ProcessCommand(&c, malformed, sizeof(malformed));
+    assert(memcmp(&before, &c, sizeof(c)) == 0);
+    const uint8_t joined[] = {0xa5, 0xa5, 1, 0x5a, 0xa5, 2, 0x5a, 0xa5, 1, 0x5a};
+    Communication_ProcessCommand(&c, joined, sizeof(joined));
+    assert(c.telemetry.receivedPacketCount == 6 && c.telemetry.enabled);
+    assert(c.telemetry.lastReceivedCommand == 1 && c.telemetry.commandExecuted);
+    c.telemetry.receivedPacketCount = UINT16_MAX;
+    Communication_ProcessCommand(&c, on, sizeof(on));
+    assert(c.telemetry.receivedPacketCount == 0); /* Repeated valid packets count. */
+
+    XBeeResult errors[] = {XBEE_RX_LOST, XBEE_IO_ERROR, XBEE_NOT_READY};
+    for (unsigned i = 0; i < sizeof(errors)/sizeof(errors[0]); ++i) {
+        Communication_ProcessCommand(&c, off, 2);
+        readResult = errors[i];
+        Communication_Update(&c);
+        Communication_ProcessCommand(&c, off + 2, 1);
+        assert(c.telemetry.enabled && c.telemetry.receivedPacketCount == 0);
+    }
+    Communication_ProcessCommand(NULL, on, sizeof(on));
+    Communication_ProcessCommand(&c, NULL, sizeof(on));
+    readResult = XBEE_OK;
+    puts("Command framing, chunk splits, resynchronization, status and RX-loss tests passed");
+}
+
+static void test_calibration_command(void)
+{
+    Cansat c;
+    Cansat_Init(&c);
+    assert(Communication_Init());
+    const uint8_t cal[] = {0xa5, 3, 0x5a}, off[] = {0xa5, 2, 0x5a};
+    missionStatus.persistenceOK = calibrationStartOK = referenceSaveOK = true;
+    calibrationStarts = referenceSaves = 0;
+    c.missionState = CANSAT_STATE_ASCENT;
+    Communication_ProcessCommand(&c, cal, 3);
+    assert(calibrationStarts == 0 && !c.telemetry.commandExecuted);
+    c.missionState = CANSAT_STATE_LAUNCH_PAD;
+    Communication_ProcessCommand(&c, cal, 3);
+    Communication_ProcessCommand(&c, cal, 3);
+    assert(calibrationStarts == 1 && !c.telemetry.commandExecuted);
+    Communication_Update(&c);
+    assert(referenceSaves == 0 && !c.telemetry.commandExecuted);
+    calibrationResult = SENSOR_CAL_SUCCESS;
+    Communication_Update(&c);
+    assert(referenceSaves == 1 && c.telemetry.commandExecuted && c.telemetry.lastExecutedCommand == 3);
+    Communication_Update(&c); assert(referenceSaves == 1);
+    Communication_ProcessCommand(&c, cal, 3);
+    Communication_ProcessCommand(&c, off, 3);
+    calibrationResult = SENSOR_CAL_SUCCESS;
+    Communication_Update(&c);
+    assert(c.telemetry.lastReceivedCommand == 2 && c.telemetry.commandExecuted);
+    assert(c.telemetry.lastExecutedCommand == 3 && !c.telemetry.enabled);
+    Communication_ProcessCommand(&c, off, 3);
+    Communication_ProcessCommand(&c, cal, 3);
+    calibrationResult = SENSOR_CAL_FAILED;
+    Communication_Update(&c);
+    assert(!c.telemetry.commandExecuted && c.telemetry.lastExecutedCommand == 2);
+    Communication_ProcessCommand(&c, cal, 3);
+    calibrationResult = SENSOR_CAL_SUCCESS; referenceSaveOK = false;
+    Communication_Update(&c);
+    assert(!c.telemetry.commandExecuted && c.telemetry.lastExecutedCommand == 2);
+    calibrationStartOK = false;
+    Communication_ProcessCommand(&c, cal, 3);
+    assert(!c.telemetry.commandExecuted);
+    puts("Calibration gating, async completion, duplicate requests, failure and command association passed");
 }
 
 int main(void)
@@ -277,6 +390,8 @@ int main(void)
     test_invalid_and_limits();
     test_binary_payload();
     test_send_and_service();
+    test_commands();
+    test_calibration_command();
     puts("All binary communication host tests passed");
     return 0;
 }

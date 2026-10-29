@@ -1,2 +1,2 @@
 CompileFlags:
-  CompilationDatabase: build/TestAcquisitionLogging
+  CompilationDatabase: build/TestAcquisitionLoggingTelemetry

@@ -29,3 +29,5 @@ const StateMachineStatus *StateMachine_GetStatus(void);
 bool StateMachine_BeginNewMission(Cansat *cansat);
 /* Called once by altitude estimation on a fresh launch-pad mission. */
 bool StateMachine_SetGroundPressure(Cansat *cansat, float pressurePa);
+/* Explicit recalibration: replaces the launch-pad reference and saves to flash. */
+bool StateMachine_RecalibrateGroundPressure(Cansat *cansat, float pressurePa);

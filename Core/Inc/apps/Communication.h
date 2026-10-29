@@ -14,6 +14,13 @@ typedef struct Cansat Cansat;
 #define COMMUNICATION_TELEMETRY_PERIOD_MS 500U
 #define COMMUNICATION_RX_BUDGET 256U
 
+typedef enum {
+    COMMAND_NONE = 0,
+    COMMAND_TELEMETRY_ON = 1,
+    COMMAND_TELEMETRY_OFF = 2,
+    COMMAND_CALIBRATE_SENSORS = 3
+} GroundCommand;
+
 /* Once after CubeMX UART4/DMA initialization, in main-loop context. */
 bool Communication_Init(void);
 
@@ -42,9 +49,9 @@ size_t Communication_FormatTelemetry(const Cansat *cansat, uint8_t *buffer, size
  * Explicit sends bypass the scheduled telemetry.enabled gate. */
 bool Communication_SendTelemetry(Cansat *cansat);
 
-/* Ground-command placeholder. Input is a byte chunk, NOT a NUL-terminated
- * string or necessarily a complete command. Currently changes no state.
- * Define framing/reassembly and exact matching here later. */
+/* Assemble binary A5 <ID 1..3> 5A packets across arbitrary UART chunks.
+ * Main-loop only. Unknown IDs/malformed frames do not update bookkeeping.
+ * Each recognized packet counts, including repeated commands. */
 void Communication_ProcessCommand(Cansat *cansat, const uint8_t *bytes, size_t length);
 
 #endif

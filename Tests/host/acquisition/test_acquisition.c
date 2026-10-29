@@ -25,6 +25,28 @@ static unsigned commUpdates, telemetryAttempts, logAttempts;
 static bool logReady, sendOK = true;
 static uint16_t loggedPacket;
 static uint32_t logDelay;
+static BMI270 *testBmi;
+static unsigned calibrationStarts;
+static unsigned correctionRestores;
+bool BMI270_GetCalibration(const BMI270 *dev, BMI270Calibration *out)
+{ if (!dev->initialized) return false; *out = dev->calibration; return true; }
+bool BMI270_SetCalibration(BMI270 *dev, const BMI270Calibration *value)
+{ dev->calibration = *value; ++correctionRestores; return true; }
+bool IIS2MDC_GetCalibration(const IIS2MDC *dev, SensorCalibration3D *out)
+{ if (!dev->initialized) return false; *out = dev->calibration; return true; }
+bool IIS2MDC_SetCalibration(IIS2MDC *dev, const SensorCalibration3D *value)
+{ dev->calibration = *value; ++correctionRestores; return true; }
+bool BMP280_SetCalibration(BMP280 *dev, float temperature, float pressure)
+{ dev->temperature_offset_c = temperature; dev->pressure_offset_pa = pressure; return true; }
+bool AHT20_SetCalibration(AHT20 *dev, float humidity)
+{ dev->humidity_offset_rh = humidity; return true; }
+bool BMI270_StartGyroCalibration(BMI270 *dev, uint16_t count, uint32_t timeout)
+{
+    assert(count == CALIBRATION_GYRO_SAMPLES && timeout == CALIBRATION_GYRO_TIMEOUT_MS);
+    ++calibrationStarts; testBmi = dev; dev->calibration_state = BMI270_CAL_COLLECTING;
+    return true;
+}
+void BMI270_CancelGyroCalibration(BMI270 *dev) { dev->calibration_state = BMI270_CAL_IDLE; }
 
 uint32_t HAL_GetTick(void) { return tick; }
 /* State-machine behavior is covered by its dedicated suite. */
@@ -63,7 +85,7 @@ bool BMP280_Init(BMP280 *dev, I2C_HandleTypeDef *bus, uint8_t address)
 {
     assert(bus == &hi2c2 && address == BMP280_ADDRESS_HIGH);
     ++initCalls[BMP];
-    *dev = (BMP280){.initialized = initOK[BMP]};
+    *dev = (BMP280){.initialized = initOK[BMP], .groundPressureValid = initOK[BMP], .groundPressurePa = 101234};
     return dev->initialized;
 }
 bool AHT20_Init(AHT20 *dev, I2C_HandleTypeDef *bus)
@@ -90,7 +112,7 @@ bool IIS2MDC_Init(IIS2MDC *dev, I2C_HandleTypeDef *bus)
 bool Battery_Init(void) { ++initCalls[BATTERY]; return initOK[BATTERY]; }
 bool GNSS_Init(UART_HandleTypeDef *uart, uint32_t baud)
 {
-    assert(uart == &huart6 && baud == 9600U);
+    assert(uart == &huart6 && baud == GNSS_EXPECTED_BAUD);
     ++initCalls[GNSS];
     return initOK[GNSS];
 }
@@ -344,12 +366,45 @@ static void test_flight_integration(void)
     assert(commUpdates == 12);
 }
 
+static void test_calibration(void)
+{
+    reset();
+    assert(SensorAcquisition_Init());
+    Cansat c; Cansat_Init(&c);
+    c.bmp.valid = c.bmp.heightValid = c.env.valid = c.bmi.valid = c.mag.valid = true;
+    calibrationStarts = correctionRestores = 0;
+    assert(SensorAcquisition_StartCalibration(&c));
+    assert(!c.bmp.valid && !c.bmp.heightValid && !c.env.valid && !c.bmi.valid && !c.mag.valid);
+    assert(calibrationStarts == 1 && correctionRestores == 2);
+    assert(initCalls[BMP] == 2 && initCalls[AHT] == 2 && initCalls[BMI] == 2 && initCalls[MAG] == 2);
+    assert(initCalls[GNSS] == 1 && initCalls[BATTERY] == 1);
+    assert(SensorAcquisition_GetGroundPressure() == 101234);
+    assert(SensorAcquisition_StartCalibration(&c) && calibrationStarts == 1);
+    assert(SensorAcquisition_GetCalibrationStatus() == SENSOR_CAL_RUNNING);
+    testBmi->calibration_state = BMI270_CAL_DONE;
+    assert(SensorAcquisition_GetCalibrationStatus() == SENSOR_CAL_SUCCESS);
+    assert(SensorAcquisition_StartCalibration(&c));
+    testBmi->calibration_state = BMI270_CAL_MOTION;
+    assert(SensorAcquisition_GetCalibrationStatus() == SENSOR_CAL_FAILED);
+    tick = UINT32_MAX - 100;
+    assert(SensorAcquisition_StartCalibration(&c));
+    tick += CALIBRATION_GYRO_TIMEOUT_MS;
+    assert(SensorAcquisition_GetCalibrationStatus() == SENSOR_CAL_FAILED);
+    assert(testBmi->calibration_state == BMI270_CAL_IDLE);
+    initOK[MAG] = false;
+    unsigned before = calibrationStarts;
+    assert(!SensorAcquisition_StartCalibration(&c) && calibrationStarts == before);
+    assert(SensorAcquisition_GetCalibrationStatus() == SENSOR_CAL_FAILED);
+    assert(!SensorAcquisition_StartCalibration(NULL));
+}
+
 int main(void)
 {
     test_acquisition();
     test_startup_failure();
     test_humidity_rollover();
     test_flight_integration();
+    test_calibration();
     puts("Sensor acquisition tests passed");
     return 0;
 }

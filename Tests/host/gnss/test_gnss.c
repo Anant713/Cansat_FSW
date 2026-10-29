@@ -9,7 +9,7 @@ static UART_HandleTypeDef uart;
 static uint8_t *rx;
 static uint16_t rx_size, rx_pos;
 static uint32_t tick, transmissions;
-static uint8_t transmitted[28];
+static uint8_t transmitted[40];
 static uint16_t transmitted_size;
 static HAL_StatusTypeDef tx_result;
 uint32_t HAL_GetTick(void) { return tick; }
@@ -36,7 +36,7 @@ static void reset(void)
     dma.Init.MemInc = DMA_MINC_ENABLE; dma.Init.PeriphInc = DMA_PINC_DISABLE;
     dma.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE; dma.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
     uart.hdmarx = &dma; uart.ErrorCode = 0;
-    CHECK(GNSS_Init(&uart, 9600));
+    CHECK(GNSS_Init(&uart, GNSS_EXPECTED_BAUD));
 }
 static GNSSDiagnostics stats(void) { GNSSDiagnostics d; GNSS_GetDiagnostics(&d); return d; }
 static void input(const void *bytes, size_t n, bool idle)
@@ -62,21 +62,6 @@ static size_t nmea(char *out, const char *body)
 static void message(const char *body)
 {
     char out[256]; size_t n = nmea(out, body); input(out, n, true); GNSS_Process();
-}
-static size_t make_ubx(uint8_t *frame, uint8_t cls, uint8_t id, const uint8_t *payload, uint8_t n)
-{
-    frame[0]=0xb5; frame[1]=0x62; frame[2]=cls; frame[3]=id; frame[4]=n; frame[5]=0;
-    memcpy(frame+6, payload, n);
-    uint8_t a = 0,b = 0;
-    for (unsigned i = 2; i < n+6U; ++i) { a += frame[i]; b += a; }
-    frame[n+6] = a; frame[n+7] = b;
-    return n+8U;
-}
-static void ubx(uint8_t cls, uint8_t id, const uint8_t *payload, uint8_t n)
-{
-    uint8_t frame[64];
-    size_t size = make_ubx(frame, cls, id, payload, n);
-    input(frame, size, true);
 }
 static const char *fix = "GPGGA,123519.25,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,";
 static const char *velocity = "GPVTG,054.7,T,,M,005.5,N,010.2,K,A";
@@ -138,11 +123,7 @@ static void test_bad_frames(void)
     input("$GPGGA,partial",14,true); GNSS_Process();
     message(fix); CHECK(GNSS_GetData(&data));
     CHECK(!GNSS_GetData(NULL));
-    uint8_t other_payload[] = {'$', 'G', 'P', 'G', 'G', 'A', '\n'};
-    uint32_t old = stats().goodGga;
-    ubx(1,2,other_payload,sizeof(other_payload)); GNSS_Process();
-    CHECK(stats().goodGga == old);
-    puts("Parser recovery: corrupt checksum, malformed fields, overlength, noise and mixed UBX passed");
+    puts("Parser recovery: corrupt checksum, malformed fields, overlength and noise passed");
 }
 static void test_dma_and_freshness(void)
 {
@@ -166,7 +147,7 @@ static void test_dma_and_freshness(void)
     CHECK(!GNSS_GetData(&data) && !data.fixValid && !data.utcValid);
     /* Age is RX time, not the later time the main loop parses the sentence. */
     input(frame,n,true); tick += GNSS_FRESH_MS+1; GNSS_Process(); CHECK(!GNSS_GetData(&data));
-    tick = UINT32_MAX-500U; message(fix); tick += 1000;
+    tick = UINT32_MAX-500U; message(fix); tick += 100;
     CHECK(GNSS_GetData(&data)); tick += 2000; CHECK(!GNSS_GetData(&data));
     message(fix);
     for (unsigned i=0;i<20;++i) input(filler,sizeof(filler),true);
@@ -178,179 +159,92 @@ static void test_dma_and_freshness(void)
     GNSS_Process(); CHECK(GNSS_StartReception()); message(fix); CHECK(GNSS_GetData(&data));
     puts("DMA: wrap, duplicate/reordered events, deferred parsing, overflow, stale RX and UART recovery passed");
 }
-static void ack_command(bool accepted)
+
+static void expect_query(const char *body)
 {
-    CHECK(transmitted[0] == 0xb5 && transmitted[1] == 0x62 && transmitted[2] == 6);
-    uint8_t a=0,b=0;
-    for (unsigned i=2;i<transmitted_size-2U;++i) { a+=transmitted[i]; b+=a; }
-    CHECK(a == transmitted[transmitted_size-2] && b == transmitted[transmitted_size-1]);
+    char frame[128]; size_t n = nmea(frame, body);
+    CHECK(transmitted_size == n && !memcmp(transmitted, frame, n));
     HAL_UART_TxCpltCallback(&uart);
-    uint8_t payload[] = {6,transmitted[3]};
-    ubx(5,accepted?1:0,payload,2);
+}
+static void query_replies(bool wrong_messages)
+{
     GNSS_Process();
-}
-static void settings_until_baud(uint32_t target)
-{
-    CHECK(GNSS_Configure(200,target)); GNSS_Process();
-    for (unsigned i=0;i<11;++i) {
-        CHECK(transmitted[3] == 1 && transmitted[4] == 3 && transmitted[6] == 0xf0);
-        bool enabled = i == 0 || i == 5;
-#ifdef GNSS_ENABLE_NAV
-        enabled = i == 0;
-#endif
-#ifdef GNSS_ENABLE_GSV
-        enabled = enabled || i == 3;
-#endif
-        CHECK(transmitted[7] == i && transmitted[8] == (enabled ? 1 : 0));
-        ack_command(true);
+    for (unsigned i=0; i<9; ++i) {
+        char body[40]; snprintf(body,sizeof(body),"PAIR062,%u,%u",i,(i==0 || i==5)?1U:0U);
+        expect_query(body); message("PAIR001,062,0");
     }
-    for (unsigned i = 0; i < 2; ++i) {
-        CHECK(transmitted[3] == 1 && transmitted[4] == 3 && transmitted[6] == 1);
-        CHECK(transmitted[7] == (i == 0 ? 0x12 : 0x21));
-#ifdef GNSS_ENABLE_NAV
-        CHECK(transmitted[8] == 1);
-#else
-        CHECK(transmitted[8] == 0);
-#endif
-        ack_command(true);
+    expect_query("PAIR865,0,0");
+    message("PAIR001,865,0"); message("PAIR865,115200");
+    expect_query("PAIR051");
+    message("PAIR051,100"); message("PAIR001,051,0"); /* reply before ACK also allowed */
+    expect_query("PAIR063,-1");
+    message("PAIR001,063,0");
+    for (unsigned i=0; i<10; ++i) {
+        char body[40];
+        unsigned rate = (i==0 || i==(wrong_messages ? 4U : 5U)) ? 1U : 0U;
+        snprintf(body,sizeof(body),"PAIR063,%u,%u",i,rate); message(body);
     }
-    CHECK(transmitted[3] == 2 && transmitted[4] == 10 && transmitted[6] == 1);
-    ack_command(true);
-    CHECK(transmitted[3] == 8 && transmitted[4] == 6);
-    CHECK(transmitted[6] == 0xc8 && transmitted[7] == 0 && transmitted[8] == 1);
-    ack_command(true);
+    if (wrong_messages) return;
+    expect_query("PAIR067");
+    message("PAIR001,067,0"); message("PAIR067,1,0,1,0,1,1");
+    CHECK(stats().configState == GNSS_CONFIG_BUSY && stats().configStep == 4);
 }
-static void test_configuration(void)
+static void gga_at(unsigned ms)
 {
-    reset(); CHECK(!GNSS_Configure(100,9600)); CHECK(!GNSS_Configure(500,12345));
-    settings_until_baud(9600); CHECK(stats().configState == GNSS_CONFIG_DONE && transmissions == 15);
-    reset(); settings_until_baud(38400);
-    CHECK(transmitted[3] == 0 && transmitted[4] == 20 && transmitted[6] == 1);
-    CHECK(transmitted[10] == 0xd0 && transmitted[11] == 8 && transmitted[14] == 0 && transmitted[15] == 0x96);
-    HAL_UART_TxCpltCallback(&uart); tick += 99; GNSS_Process(); CHECK(uart.Init.BaudRate == 9600);
-    tick += 1; GNSS_Process();
-    CHECK(uart.Init.BaudRate == 38400 && transmitted[3] == 0 && transmitted[4] == 1);
-    HAL_UART_TxCpltCallback(&uart);
-    uint8_t config[20] = {1,0,0,0,0xd0,8,0,0,0,0x96,0,0,3,0,3,0,0,0,0,0};
-    ubx(6,0,config,20); GNSS_Process(); CHECK(stats().configState == GNSS_CONFIG_DONE);
-    reset(); CHECK(GNSS_Configure(1000,9600)); GNSS_Process(); ack_command(false);
-    CHECK(stats().configState == GNSS_CONFIG_NAK);
-    reset(); CHECK(GNSS_Configure(1000,9600)); GNSS_Process();
-    HAL_UART_TxCpltCallback(&uart); tick += 2500; GNSS_Process(); CHECK(stats().configState == GNSS_CONFIG_TIMEOUT);
-    reset(); settings_until_baud(38400); HAL_UART_TxCpltCallback(&uart);
-    tick += 100; GNSS_Process(); HAL_UART_TxCpltCallback(&uart);
-    tick += 2500; GNSS_Process(); CHECK(stats().configState == GNSS_CONFIG_BAUD_UNCONFIRMED);
-    reset(); tx_result = HAL_BUSY; CHECK(GNSS_Configure(200,9600)); GNSS_Process();
-    CHECK(stats().configState == GNSS_CONFIG_IO_ERROR);
-    puts("UBX: sentence/rate payloads, checksums, ACK/NAK, baud readback and timeout handling passed");
+    char body[128];
+    snprintf(body,sizeof(body),"GNGGA,123519.%03u,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,",ms);
+    message(body);
 }
-#ifdef GNSS_ENABLE_GSV
-static void test_gsv(void)
+static void test_verification(void)
 {
-    reset(); GNSSSatInView data;
-    CHECK(!GNSS_GetSatInView(&data));
-    const char *first = "GPGSV,2,1,05,01,30,100,40,02,40,110,,03,50,120,20,04,60,130,30";
-    char frame[256]; size_t n = nmea(frame, first);
-    for (size_t split = 1; split < n; ++split) {
-        CHECK(GNSS_StopReception()); CHECK(GNSS_StartReception());
-        input(frame, split, true); GNSS_Process(); CHECK(!GNSS_GetSatInView(&data));
-        input(frame + split, n - split, true); GNSS_Process();
-        CHECK(GNSS_GetSatInView(&data) && data.satellitesInView == 5 && data.messageNumber == 1);
+    reset(); CHECK(stats().configState==GNSS_CONFIG_BUSY);
+    query_replies(false);
+    for (unsigned i=0; i<6; ++i) { tick+=100; gga_at(i*100); message("GNVTG,054.7,T,,M,005.5,N,010.2,K,A"); }
+    CHECK(stats().configState==GNSS_CONFIG_DONE && stats().rateMatches==5 && transmissions==13);
+    CHECK(stats().sentencesVerified && stats().constellationsVerified && stats().observedPeriodMs==100);
+    GNSSData d; CHECK(GNSS_GetData(&d) && d.speedValid); near(d.speed,10.2/3.6);
+    message("GNVTG,,T,,M,,N,,K,N"); CHECK(GNSS_GetData(&d) && !d.speedValid);
+    message("GNVTG,0,T,,M,0,N,0,K,M"); CHECK(GNSS_GetData(&d) && !d.vtgValid);
+    message("GNRMC,ignored"); message("PQTMANTENNASTATUS,1,1,1"); CHECK(stats().ignored==2);
+    CHECK(!GNSS_Configure(200,38400)); CHECK(GNSS_Configure(100,115200));
+    GNSS_Process(); expect_query("PAIR865,0,0"); /* explicit recheck does not set mask again */
+    reset(); query_replies(true); CHECK(stats().configState==GNSS_CONFIG_MISMATCH && !stats().sentencesVerified);
+    reset(); GNSS_StopReception(); GNSS_StartReception(); CHECK(GNSS_VerifyConfiguration());
+    GNSS_Process(); expect_query("PAIR865,0,0");
+    message("PAIR001,865,0"); message("PAIR865,9600"); CHECK(stats().configState==GNSS_CONFIG_MISMATCH);
+    reset(); GNSS_Process(); expect_query("PAIR062,0,1");
+    message("PAIR001,062,2"); CHECK(stats().configState==GNSS_CONFIG_NAK);
+    reset(); GNSS_StopReception(); GNSS_StartReception(); CHECK(GNSS_VerifyConfiguration());
+    GNSS_Process(); expect_query("PAIR865,0,0");
+    message("PAIR001,051,0"); message("PAIR051,100");
+    tick+=2500; GNSS_Process(); CHECK(stats().configState==GNSS_CONFIG_TIMEOUT);
+    reset(); query_replies(false); tick+=3000; GNSS_Process();
+    CHECK(stats().configState==GNSS_CONFIG_TIMEOUT); /* no UTC evidence, never false DONE */
+    reset(); tx_result=HAL_ERROR; GNSS_Process(); CHECK(stats().configState==GNSS_CONFIG_IO_ERROR);
+    reset(); GNSS_Process(); uart.ErrorCode=8; HAL_UART_ErrorCallback(&uart);
+    CHECK(stats().configState==GNSS_CONFIG_IO_ERROR);
+    CHECK(GNSS_StartReception()); HAL_UART_TxCpltCallback(&uart); CHECK(GNSS_VerifyConfiguration());
+    puts("Quectel: startup GGA/VTG mask, read-only recheck, ACK/reply order, 10Hz evidence and failures passed");
+}
+static void test_10hz_backlog(void)
+{
+    reset(); char frame[256];
+    for (unsigned i=0; i<10; ++i) {
+        tick+=100;
+        char body[128];
+        snprintf(body,sizeof(body),"GNGGA,123519.%03u,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,",i*100);
+        size_t n=nmea(frame,body); input(frame,n,true);
+        n=nmea(frame,"GNVTG,054.7,T,,M,005.5,N,010.2,K,A"); input(frame,n,true);
     }
-    message("GPGSV,2,2,05,05,,,30");
-    CHECK(GNSS_GetSatInView(&data) && data.satellitesInView == 5 && data.messageNumber == 2);
-    CHECK(stats().goodGga == 0); /* no fix required */
-    uint32_t good = data.goodSentences;
-    frame[n-4] = frame[n-4] == '0' ? '1' : '0';
-    input(frame, n, true); GNSS_Process(); CHECK(stats().badChecksum == 1);
-    message("GPGSV,2,3,05,05,30,100,40");
-    message("GPGSV,1,1,01,05,91,100,40");
-    CHECK(stats().malformed == 2);
-    CHECK(GNSS_GetSatInView(&data) && data.goodSentences == good);
-    tick += GNSS_FRESH_MS;
-    CHECK(!GNSS_GetSatInView(&data));
-    message("GPGSV,1,1,00");
-    CHECK(GNSS_GetSatInView(&data) && data.satellitesInView == 0);
-    CHECK(GNSS_StopReception()); CHECK(!GNSS_GetSatInView(&data));
-    CHECK(!GNSS_GetSatInView(NULL));
-    puts("GPGSV: splits, multipart count, no-fix, empty fields, checksum, invalid fields and stale data passed");
+    GNSS_Process(); GNSS_Process();
+    CHECK(stats().queueDrops==0 && stats().goodGga==10 && stats().goodVtg==10);
+    GNSSData d; CHECK(GNSS_GetData(&d) && d.utcMilliseconds==900 && d.speedValid);
+    puts("10Hz GNGGA/GNVTG: one-second deferred parsing across DMA wraps passed");
 }
-#endif
-#ifdef GNSS_ENABLE_NAV
-static void put32(uint8_t *p, uint32_t v)
-{
-    for (unsigned i=0; i<4; ++i) p[i] = (uint8_t)(v >> (i*8));
-}
-static void test_nav(void)
-{
-    uint8_t vel[36] = {0}, time[20] = {0}, frame[64]; GNSSData data;
-    put32(vel, 123456); put32(vel+4, (uint32_t)-1234); put32(vel+8, 567);
-    put32(vel+12, (uint32_t)-89); put32(vel+16, 1361); put32(vel+20, 1358);
-    put32(vel+24, 12345678); put32(vel+28, 25); put32(vel+32, 123456);
-    put32(time, 123456); put32(time+4, 12345); put32(time+8, (uint32_t)-250000000);
-    time[12]=0xea; time[13]=7; /* 2026 */
-    time[14]=10; time[15]=27; time[16]=12; time[17]=35; time[18]=19; time[19]=7;
-    /* Both UBX packet types at every split, including CK_A / CK_B. */
-    for (unsigned type=0; type<2; ++type) {
-        size_t n = make_ubx(frame, 1, type ? 0x21 : 0x12, type ? time : vel, type ? 20 : 36);
-        for (size_t split=1; split<n; ++split) {
-            reset();
-            input(frame,split,true); GNSS_Process();
-            CHECK(stats().goodVelned == 0 && stats().goodTimeutc == 0);
-            input(frame+split,n-split,true); GNSS_Process();
-            CHECK(!GNSS_GetData(&data)); /* NAV arrives before any GGA */
-            CHECK(type ? data.nav.utcDateTimeValid : data.nav.velnedFresh);
-            CHECK(!data.nav.velocityValid);
-        }
-    }
-    reset();
-    /* Cross the DMA wrap and include NMEA-looking bytes inside the UBX payload. */
-    uint8_t filler[GNSS_DMA_SIZE-10]; memset(filler,'x',sizeof(filler));
-    input(filler,sizeof(filler),true); GNSS_Process();
-    ubx(1,0x12,vel,36); ubx(1,0x21,time,20); message(fix);
-    CHECK(GNSS_GetData(&data) && data.nav.velocityValid && data.nav.navEpochMatched);
-    near(data.nav.northVelocity,-12.34); near(data.nav.eastVelocity,5.67); near(data.nav.downVelocity,-0.89);
-    near(data.nav.speed3D,13.61); near(data.nav.groundSpeed,13.58);
-    near(data.nav.course,123.45678); near(data.nav.speedAccuracy,0.25); near(data.nav.courseAccuracy,1.23456);
-    CHECK(data.nav.year==2026 && data.nav.month==10 && data.nav.day==27 && data.nav.second==19);
-    CHECK(data.nav.timeAccuracyNs==12345 && data.nav.nanosecondCorrection==-250000000 && data.nav.timeValidityFlags==7);
-    CHECK(data.hdopValid && data.altitudeValid);
-    uint32_t accepted = stats().goodVelned;
-    size_t n = make_ubx(frame,1,0x12,vel,36); frame[n-1]^=1;
-    input(frame,n,true); GNSS_Process();
-    CHECK(stats().goodVelned==accepted && stats().badChecksum==1);
-    ubx(1,0x12,vel,35); ubx(1,0x21,time,19); GNSS_Process();
-    CHECK(stats().malformed==2);
-    time[19]=0; time[14]=0; ubx(1,0x21,time,20); GNSS_Process();
-    (void)GNSS_GetData(&data); CHECK(data.nav.timeutcFresh && !data.nav.utcDateTimeValid);
-    time[19]=7; time[14]=2; time[15]=30; ubx(1,0x21,time,20); GNSS_Process();
-    (void)GNSS_GetData(&data); CHECK(!data.nav.utcDateTimeValid);
-    time[14]=10; time[15]=27; put32(time,123457);
-    ubx(1,0x21,time,20); GNSS_Process(); (void)GNSS_GetData(&data);
-    CHECK(data.nav.utcDateTimeValid && !data.nav.navEpochMatched);
-    message("GPGGA,123520.00,,,,,0,00,99.99,,,,,,");
-    CHECK(GNSS_GetData(&data) && !data.nav.velocityValid && data.nav.utcDateTimeValid);
-    put32(vel+28,0x000a2424); /* '$', '$', newline must remain binary payload */
-    ubx(1,0x12,vel,36); GNSS_Process(); CHECK(stats().goodVelned==accepted+1);
-    tick += GNSS_FRESH_MS; (void)GNSS_GetData(&data);
-    CHECK(!data.nav.velnedFresh && !data.nav.timeutcFresh && !data.nav.utcDateTimeValid);
-    /* Arrival time rather than parsing time determines freshness. */
-    ubx(1,0x12,vel,36); tick+=GNSS_FRESH_MS; GNSS_Process();
-    (void)GNSS_GetData(&data); CHECK(!data.nav.velnedFresh);
-    ubx(1,0x21,time,20); GNSS_Process(); uart.ErrorCode=8; HAL_UART_ErrorCallback(&uart);
-    (void)GNSS_GetData(&data); CHECK(!data.nav.timeutcFresh);
-    CHECK(GNSS_StartReception()); (void)GNSS_GetData(&data); CHECK(!data.nav.timeutcFresh);
-    puts("NAV: binary splits/wrap, signed NED/UTC, units, checksums, lengths, validity and freshness passed");
-}
-#endif
 int main(void)
 {
-    test_parser(); test_bad_frames(); test_dma_and_freshness(); test_configuration();
-#ifdef GNSS_ENABLE_GSV
-    test_gsv();
-#endif
-#ifdef GNSS_ENABLE_NAV
-    test_nav();
-#endif
-    puts("All GNSS host tests passed."); return 0;
+    test_parser(); test_bad_frames(); test_dma_and_freshness(); test_verification();
+    test_10hz_backlog();
+    puts("All L89HA GNSS host tests passed.");
+    return 0;
 }

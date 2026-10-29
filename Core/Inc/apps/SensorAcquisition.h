@@ -3,19 +3,35 @@
 
 #include <stdbool.h>
 #define ACQUISITION_PERIOD_MS 10U
+#define CALIBRATION_GYRO_SAMPLES 128U
+#define CALIBRATION_GYRO_TIMEOUT_MS 10000U
+
+typedef enum {
+    SENSOR_CAL_IDLE, SENSOR_CAL_RUNNING, SENSOR_CAL_SUCCESS, SENSOR_CAL_FAILED
+} SensorCalibrationStatus;
 
 typedef struct Cansat Cansat;
 
 /* Single instance, main-loop context only. Call once after CubeMX peripheral
  * initialization. Attempts every sensor independently; false means at least
  * one failed startup, but successfully initialized devices remain usable.
- * Uses I2C2, USART6 (9600 baud), and the battery driver's ADC1.
+ * Uses I2C2, USART6 (115200 baud), and the battery driver's ADC1.
  * Startup is blocking and resets driver calibration to its defaults. */
 bool SensorAcquisition_Init(void);
 
+/* Explicit ground-only command operation, not part of ordinary acquisition.
+ * Reinitializes BMP/AHT/BMI/MAG (blocking startup delays), preserves existing
+ * correction coefficients, then starts asynchronous stationary gyro sampling.
+ * Caller enforces mission-state policy and persists the new ground reference.
+ * Repeated requests while RUNNING do not restart the operation. */
+bool SensorAcquisition_StartCalibration(Cansat *cansat);
+SensorCalibrationStatus SensorAcquisition_GetCalibrationStatus(void);
+float SensorAcquisition_GetGroundPressure(void);
+
 /* Call regularly on a zero-initialized Cansat (or after Cansat_Init).
  * Only sensor fields are written. No estimation, mission decisions, actuator
- * commands, automatic calibration, or sensor recovery is performed.
+ * commands, automatic calibration, or sensor recovery is performed. BMI reads
+ * advance gyro calibration only when explicitly started by the command operation.
  * I2C samples retain their last successful value/valid flag/timestamp when a
  * read fails or is not ready: valid means a sample exists, not that it is fresh.
  * GNSS always copies the driver's snapshot, including stale/no-fix flags.

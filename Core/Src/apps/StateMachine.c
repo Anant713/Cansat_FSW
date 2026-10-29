@@ -99,15 +99,25 @@ bool StateMachine_BeginNewMission(Cansat *c)
 
 bool StateMachine_SetGroundPressure(Cansat *c, float pressurePa)
 {
-    if (!c || !initialized || !status.persistenceOK || groundPressurePa != 0U ||
+    if (groundPressurePa != 0U) return false;
+    return StateMachine_RecalibrateGroundPressure(c, pressurePa);
+}
+
+bool StateMachine_RecalibrateGroundPressure(Cansat *c, float pressurePa)
+{
+    if (!c || !initialized || !status.persistenceOK ||
         c->missionState != CANSAT_STATE_LAUNCH_PAD || !isfinite(pressurePa) ||
         pressurePa < 30000.0f || pressurePa > 110000.0f) return false;
+    uint32_t previousPressure = groundPressurePa;
     groundPressurePa = (uint32_t)roundf(pressurePa);
     if (!persist(c->missionState, status.deploymentComplete)) {
-        groundPressurePa = 0;
+        groundPressurePa = previousPressure;
         return false;
     }
     c->navigation.groundPressurePa = (float)groundPressurePa;
+    c->navigation.altitudeValid = false;
+    status.heightConfirmCount = 0;
+    heightSampleSeen = false;
     return true;
 }
 
