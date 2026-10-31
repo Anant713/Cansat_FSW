@@ -11,4 +11,8 @@ try {
     if ($LASTEXITCODE) { throw 'Telemetry combined test compilation failed' }
     & ./build/driver-tools/test_combined_telemetry.exe
     if ($LASTEXITCODE) { throw 'Telemetry combined tests failed' }
+    & $Compiler -std=c11 -Wall -Wextra -Werror -pedantic -U_WIN32 -ITests/host/acquisition_logging -ITests/host/acquisition -ITests -ICore/Inc -IFATFS/Target -IMiddlewares/Third_Party/FatFs/src Tests/host/acquisition_logging/test_drone.c Core/Src/apps/Cansat.c -o build/driver-tools/test_drone_no_commands.exe
+    if ($LASTEXITCODE) { throw 'No-command drone test compilation failed' }
+    & ./build/driver-tools/test_drone_no_commands.exe
+    if ($LASTEXITCODE) { throw 'No-command drone tests failed' }
 } finally { Pop-Location }

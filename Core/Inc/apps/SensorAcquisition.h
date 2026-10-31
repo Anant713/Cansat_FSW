@@ -16,16 +16,23 @@ typedef struct Cansat Cansat;
  * initialization. Attempts every sensor independently; false means at least
  * one failed startup, but successfully initialized devices remain usable.
  * Uses I2C2, USART6 (115200 baud), and the battery driver's ADC1.
- * Startup is blocking and resets driver calibration to its defaults. */
+ * Startup configures sensors and restores a valid saved gyro/ground-reference
+ * pair after driver initialization. Never calculates a new ground zero on boot.
+ * Without a saved record, pressure is usable but relative height is invalid. */
 bool SensorAcquisition_Init(void);
 
 /* Explicit ground-only command operation, not part of ordinary acquisition.
  * Reinitializes BMP/AHT/BMI/MAG (blocking startup delays), preserves existing
  * correction coefficients, then starts asynchronous stationary gyro sampling.
- * Caller enforces mission-state policy and persists the new ground reference.
+ * Launch-pad only. UpdateCalibration services completion and atomically
+ * persists both gyro biases and ground pressure. Failure restores the prior pair.
  * Repeated requests while RUNNING do not restart the operation. */
 bool SensorAcquisition_StartCalibration(Cansat *cansat);
+/* Called by the acquisition task; may append flash once on completion. */
+SensorCalibrationStatus SensorAcquisition_UpdateCalibration(void);
 SensorCalibrationStatus SensorAcquisition_GetCalibrationStatus(void);
+/* True when a validated persisted pair is available (not a sensor-health flag). */
+bool SensorAcquisition_HasCalibration(void);
 float SensorAcquisition_GetGroundPressure(void);
 
 /* Call regularly on a zero-initialized Cansat (or after Cansat_Init).

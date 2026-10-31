@@ -4,7 +4,8 @@
 `Cansat` structure. Measurements retain driver units, axes, timestamps, and
 validity flags. It does not calculate altitude from pressure, filter readings,
 estimate attitude or velocity, evaluate mission gates, command actuators,
-calibrate sensors, transmit, or log.
+automatically calibrate sensors, transmit, or log. The explicit command-calibration
+operation is also coordinated here; see [calibration and recovery](Calibration.md).
 
 | Driver | Destination | Acquisition behavior |
 | --- | --- | --- |
@@ -30,9 +31,10 @@ Inspect the individual I2C driver contexts and their `io.status` in the debugger
 for failures; GNSS exposes its own diagnostics API.
 
 The module owns one set of driver contexts and runs only in main-loop context.
-Initialization is blocking and resets calibration to driver defaults. It uses
-I2C2, ADC1 through the battery driver, and USART6 at 9600 baud through the GNSS
-driver. The BMP/BMI addresses default to `0x76`/`0x68`, matching the existing
+Initialization is blocking, then reapplies the saved ground-pressure/gyro-bias pair
+after driver defaults are loaded. It never measures a new ground zero at boot.
+It uses I2C2, ADC1 through the battery driver, and USART6 at GNSS_EXPECTED_BAUD
+(115200 baud). The BMP/BMI addresses default to `0x77`/`0x68`, matching the existing
 sensor test. Adjust the constants at the top of `SensorAcquisition.c` to match
 the board's address pins and receiver baud. GNSS receiver configuration is not
 changed by acquisition.
@@ -53,7 +55,9 @@ a failed trigger. Tick comparisons handle the 32-bit HAL tick rollover.
 `flight_cansat` and `flight_sensor_init_ok` are available in the debugger.
 [Communication](Communication.md) now services XBee and sends telemetry when
 enabled. [Logging](Logging.md) stores the same telemetry fields as CSV on the SD card.
-State-machine and estimation/control operations remain to be implemented.
+State-machine processing follows acquisition and command service. Estimation/control
+algorithms remain to be implemented. Without a valid saved calibration, relative
+height remains invalid until explicitly calibrated on the launch pad.
 
 ## Stored measurement validity
 

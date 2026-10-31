@@ -35,21 +35,23 @@ void App_RunOnce(void)
     ConsoleLineResult input = Console_ReadLine(command, sizeof(command));
     if (input == CONSOLE_LINE_READY) {
         if (strcmp(command, "record") == 0) {
-            if (test_camera.isOn) {
+            if (test_camera.phase != CAMERA_OFF) {
                 Console_Write(test_camera.isRecording ? "Already recording.\r\n" : "Recording startup in progress.\r\n");
             } else {
                 test_camera_complete = false;
-                Console_Write("record received; powering camera now.\r\n");
-                CameraControl_Start(&test_camera);
-                Console_Write("Camera powered; starting capture pulse.\r\n");
+                Console_Write("record received; initializing camera.\r\n");
+                CameraControl_Init(&test_camera);
+                Console_Printf("DVR high for %lu ms, then off for %lu ms, then capture startup.\r\n",
+                    (unsigned long)CAMERA_INIT_PULSE_MS, (unsigned long)CAMERA_INIT_DELAY_MS);
             }
         } else if (strcmp(command, "stop") == 0) {
             CameraControl_Stop(&test_camera);
             test_camera_complete = true;
             Console_Write("Recording stopped; DVR off.\r\n");
         } else if (strcmp(command, "status") == 0) {
-            Console_Printf("Camera on=%u recording=%u; RX bytes=%lu lines=%lu errors=%lu dropped=%lu\r\n",
+            Console_Printf("Camera on=%u recording=%u phase=%u; RX bytes=%lu lines=%lu errors=%lu dropped=%lu\r\n",
                 (unsigned)test_camera.isOn, (unsigned)test_camera.isRecording,
+                (unsigned)test_camera.phase,
                 (unsigned long)console_diagnostics.rx_received_bytes,
                 (unsigned long)console_diagnostics.completed_lines,
                 (unsigned long)console_diagnostics.rx_errors,

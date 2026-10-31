@@ -2,7 +2,7 @@
     "configurations": [
         {
             "name": "STM32",
-            "compileCommands": "${workspaceFolder}/build/TestAcquisitionLoggingTelemetry/compile_commands.json"
+            "compileCommands": "${workspaceFolder}/build/TestTelecommands/compile_commands.json"
         }
     ]
 }

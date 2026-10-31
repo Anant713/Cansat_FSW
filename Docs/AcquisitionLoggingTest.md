@@ -14,8 +14,11 @@ cmake --preset TestAcquisitionLoggingTelemetry
 cmake --build --preset TestAcquisitionLoggingTelemetry
 ```
 
-Flash the matching ELF and open USART3 at 115200 baud, 8N1. Keep the board at its
-intended ground reference during initialization while BMP averages ground pressure.
+Flash the matching ELF and open USART3 at 115200 baud, 8N1. Preserve sector 11:
+initialization restores existing gyro/ground calibration without resampling zero.
+Without a saved calibration pair, relative altitude is unavailable; calibrate
+using flight firmware first. The standalone TestSensors bench test explicitly
+samples its own temporary ground zero and does not persist it.
 The telemetry variant uses UART4/XBee and enables transmission automatically.
 No mission transitions, actuator commands or mission-flash writes run in either test.
 

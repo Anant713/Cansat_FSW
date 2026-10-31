@@ -2,7 +2,11 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdarg.h>
+#ifdef TEST_DRONE_NO_COMMANDS
+#include "../../HDRM_drone_no_commands_test.c"
+#else
 #include "../../test_acquisition_logging.c"
+#endif
 MockDWT mockDwt;
 MockCoreDebug mockDebug;
 uint32_t SystemCoreClock = 1000000;
@@ -104,6 +108,7 @@ int main(void)
     assert(telemetryCalls == 1 && communicationUpdates > 0);
 #endif
     puts("Combined test scheduling and timing passed: task periods, measured durations, defaults and stop.");
+    return 0;
 }
 
 

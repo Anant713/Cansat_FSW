@@ -3,6 +3,7 @@
 #define MAGIC 0x43414E31UL
 #define COMMIT 0x51A7C0DEUL
 static uint32_t nextOffset;
+static bool scanned;
 static bool valid_payload(uint32_t data)
 {
     uint32_t pressure = (data >> MISSION_PRESSURE_SHIFT) & MISSION_PRESSURE_MASK;
@@ -12,6 +13,7 @@ static bool valid_payload(uint32_t data)
 
 MissionStoreResult MissionStore_Load(uint32_t *payload)
 {
+    scanned = true;
     bool occupied = false, found = false;
     nextOffset = 0;
     for (uint32_t offset = 0; offset < MISSION_STORE_SIZE; offset += RECORD_SIZE) {
@@ -33,12 +35,19 @@ MissionStoreResult MissionStore_Load(uint32_t *payload)
 }
 bool MissionStore_Save(uint32_t payload)
 {
-    if (!valid_payload(payload) ||
-        nextOffset >= MISSION_STORE_SIZE) return false;
+    if (!valid_payload(payload)) return false;
+    const uint32_t words[] = {MAGIC, payload, ~payload, COMMIT};
+    return MissionStore_AppendWords(words, 4U);
+}
+
+bool MissionStore_AppendWords(const uint32_t *words, uint32_t count)
+{
+    if (!words || (count != 4U && count != 8U)) return false;
+    if (!scanned) (void)MissionStore_Load(0);
+    if (nextOffset > MISSION_STORE_SIZE - count * 4U) return false;
     uint32_t offset = nextOffset;
-    nextOffset += RECORD_SIZE; /* A torn slot is never reused. */
-    return MissionStore_WriteWord(offset, MAGIC) &&
-        MissionStore_WriteWord(offset + 4U, payload) &&
-        MissionStore_WriteWord(offset + 8U, ~payload) &&
-        MissionStore_WriteWord(offset + 12U, COMMIT);
+    nextOffset += count * 4U; /* Never reuse a partially programmed slot. */
+    for (uint32_t i = 0; i < count; ++i)
+        if (!MissionStore_WriteWord(offset + i * 4U, words[i])) return false;
+    return true;
 }

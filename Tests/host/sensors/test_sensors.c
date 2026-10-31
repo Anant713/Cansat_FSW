@@ -133,6 +133,14 @@ static void test_bmp(void)
     reset(); bmp_fixture(0x77);
     BMP280 dev; BMP280Data out;
     assert(BMP280_Init(&dev, &bus, 0x77));
+    assert(!dev.groundPressureValid);
+    tick += 44;
+    assert(BMP280_Read(&dev, &out) && !out.heightValid);
+    assert(BMP280_SetGroundPressure(&dev, 101325));
+    assert(!BMP280_SetGroundPressure(&dev, NAN));
+    assert(!BMP280_SetGroundPressure(&dev, 0));
+    assert(BMP280_Read(&dev, &out) && out.heightValid && out.relativeHeightM > 0);
+    assert(BMP280_CalibrateGroundPressure(&dev));
     assert(regs[0x77][0xf4] == 0x57 && regs[0x77][0xf5] == 0x28);
     assert(dev.groundPressureValid);
     near(dev.groundPressurePa, 100653.26f, 0.1f);
@@ -167,10 +175,12 @@ static void test_bmp(void)
     bmp_fixture(0x76); regs[0x76][0xf3] = 1;
     assert(!BMP280_Init(&dev, &bus, 0x76) && dev.io.status == SENSOR_TIMEOUT);
     reset(); bmp_fixture(0x76); regs[0x76][0xf3] = 8;
-    assert(!BMP280_Init(&dev, &bus, 0x76) && dev.io.status == SENSOR_TIMEOUT && !dev.initialized);
+    assert(BMP280_Init(&dev, &bus, 0x76));
+    assert(!BMP280_CalibrateGroundPressure(&dev) && dev.io.status == SENSOR_TIMEOUT && dev.initialized);
     reset(); bmp_fixture(0x76);
     regs[0x76][0xf7] = 0x80; regs[0x76][0xf8] = regs[0x76][0xf9] = 0;
-    assert(!BMP280_Init(&dev, &bus, 0x76) && !dev.groundPressureValid && !dev.initialized);
+    assert(BMP280_Init(&dev, &bus, 0x76));
+    assert(!BMP280_CalibrateGroundPressure(&dev) && !dev.groundPressureValid && dev.initialized);
     puts("BMP280: factory compensation, offsets, mode transitions and failures passed");
 }
 static void test_aht(void)
@@ -279,7 +289,9 @@ static void test_mag(void)
     le(&regs[0x1e][0x68], 100); le(&regs[0x1e][0x6a], -200); le(&regs[0x1e][0x6c], 300);
     regs[0x1e][0x67] = 0x88;
     assert(IIS2MDC_Read(&dev, &out) && out.overrun);
-    near(out.magX, 15, 0.001f); near(out.magY, -30, 0.001f); near(out.magZ, 45, 0.001f);
+    near(out.magX, 20.76160f, 0.001f);
+    near(out.magY, -33.06148f, 0.001f);
+    near(out.magZ, 33.10216f, 0.001f);
     SensorCalibration3D cal = {{5, -10, 15}, {{1,0.5f,0},{0,2,0},{0,0,1}}, 2};
     assert(IIS2MDC_SetCalibration(&dev, &cal));
     regs[0x1e][0x67] = 8;

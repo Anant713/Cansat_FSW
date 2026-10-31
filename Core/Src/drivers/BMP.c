@@ -48,7 +48,24 @@ bool BMP280_Init(BMP280 *dev, I2C_HandleTypeDef *bus, uint8_t address)
     dev->mode = BMP280_NORMAL;
     dev->pending = true;
     dev->started_ms = HAL_GetTick();
-    /* Startup-only settling and averaging. 110 ms exceeds the maximum
+    return true;
+}
+
+bool BMP280_SetGroundPressure(BMP280 *dev, float pressurePa)
+{
+    if (!usable(dev)) return false;
+    if (!isfinite(pressurePa) || pressurePa < 30000.0f || pressurePa > 110000.0f)
+        return Sensor_Fail(&dev->io, SENSOR_BAD_ARGUMENT);
+    dev->groundPressurePa = pressurePa;
+    dev->groundPressureValid = true;
+    return true;
+}
+
+bool BMP280_CalibrateGroundPressure(BMP280 *dev)
+{
+    if (!usable(dev)) return false;
+    if (dev->mode != BMP280_NORMAL) return Sensor_Fail(&dev->io, SENSOR_BAD_ARGUMENT);
+    /* Explicit ground-only settling and averaging. 110 ms exceeds the maximum
      * conversion + 62.5 ms standby, avoiding repeated reads of one sample. */
     HAL_Delay(1000);
     float sum = 0.0f;
@@ -70,11 +87,8 @@ bool BMP280_Init(BMP280 *dev, I2C_HandleTypeDef *bus, uint8_t address)
         sum += sample.pressure;
         if (i < 15U) HAL_Delay(110);
     }
-    dev->groundPressurePa = sum / 16.0f;
-    dev->groundPressureValid = true;
-    return true;
+    return BMP280_SetGroundPressure(dev, sum / 16.0f);
 ground_failed:
-    dev->initialized = false;
     return false;
 }
 

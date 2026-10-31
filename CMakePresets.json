@@ -1,6 +1,10 @@
 {
     "version": 3,
     "configurePresets": [
+        { "name": "TestHILS", "inherits": "default", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "FIRMWARE_APP": "testHILS" } },
+        { "name": "HDRMDroneNoCommands", "inherits": "default", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "FIRMWARE_APP": "HDRM_drone_no_commands_test" } },
+        { "name": "HDRMDroneTest", "inherits": "default", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "FIRMWARE_APP": "HDRM_drone_test" } },
+        { "name": "TestTelecommands", "inherits": "default", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "FIRMWARE_APP": "test_telecommands" } },
         {
             "name": "TestAcquisitionLoggingTelemetry", "inherits": "default",
             "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "FIRMWARE_APP": "test_acquisition_logging_telemetry" }
@@ -103,6 +107,10 @@
         }
     ],
     "buildPresets": [
+        { "name": "TestHILS", "configurePreset": "TestHILS" },
+        { "name": "HDRMDroneNoCommands", "configurePreset": "HDRMDroneNoCommands" },
+        { "name": "HDRMDroneTest", "configurePreset": "HDRMDroneTest" },
+        { "name": "TestTelecommands", "configurePreset": "TestTelecommands" },
         { "name": "TestAcquisitionLoggingTelemetry", "configurePreset": "TestAcquisitionLoggingTelemetry" },
         { "name": "TestAcquisitionLogging", "configurePreset": "TestAcquisitionLogging" },
         { "name": "TestBattery", "configurePreset": "TestBattery" },

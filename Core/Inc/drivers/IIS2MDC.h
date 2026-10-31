@@ -3,6 +3,15 @@
 #include "drivers/SensorI2C.h"
 #define IIS2MDC_ADDRESS 0x1eU
 
+/* Board calibration: bias in microtesla, sensor X/Y/Z axes.
+ * corrected = matrix * (measured_uT - bias), with unit scale factor.
+ * Compiled into firmware and restored by every IIS2MDC_Init(). */
+#define IIS2MDC_DEFAULT_CALIBRATION \
+    { {-5.84f, 3.08f, 11.92f}, \
+      {{1.001f, 0.012f, 0.009f}, \
+       {0.012f, 1.006f, -0.001f}, \
+       {0.009f, -0.001f, 0.994f}}, 1.0f }
+
 typedef struct {
     float magX, magY, magZ;         /* microtesla, sensor axes */
     uint32_t timestamp_ms;

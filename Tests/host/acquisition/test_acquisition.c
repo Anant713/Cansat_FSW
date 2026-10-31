@@ -4,6 +4,7 @@
 #include "apps/Communication.h"
 #include "apps/Logging.h"
 #include "App.h"
+#include "drivers/CalibrationStore.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -28,6 +29,22 @@ static uint32_t logDelay;
 static BMI270 *testBmi;
 static unsigned calibrationStarts;
 static unsigned correctionRestores;
+static CalibrationStoreResult storedResult;
+static SensorCalibrationRecord storedCalibration;
+static bool storeOK = true;
+static unsigned storeWrites, groundSamples;
+CalibrationStoreResult CalibrationStore_Load(SensorCalibrationRecord *out)
+{ if (storedResult == CAL_STORE_VALID) *out = storedCalibration; return storedResult; }
+bool CalibrationStore_Save(const SensorCalibrationRecord *record)
+{
+    ++storeWrites;
+    if (!storeOK) return false;
+    storedCalibration = *record; storedResult = CAL_STORE_VALID; return true;
+}
+bool BMP280_SetGroundPressure(BMP280 *dev, float pressure)
+{ dev->groundPressurePa = pressure; dev->groundPressureValid = true; return true; }
+bool BMP280_CalibrateGroundPressure(BMP280 *dev)
+{ ++groundSamples; return BMP280_SetGroundPressure(dev, 101234); }
 bool BMI270_GetCalibration(const BMI270 *dev, BMI270Calibration *out)
 { if (!dev->initialized) return false; *out = dev->calibration; return true; }
 bool BMI270_SetCalibration(BMI270 *dev, const BMI270Calibration *value)
@@ -85,7 +102,7 @@ bool BMP280_Init(BMP280 *dev, I2C_HandleTypeDef *bus, uint8_t address)
 {
     assert(bus == &hi2c2 && address == BMP280_ADDRESS_HIGH);
     ++initCalls[BMP];
-    *dev = (BMP280){.initialized = initOK[BMP], .groundPressureValid = initOK[BMP], .groundPressurePa = 101234};
+    *dev = (BMP280){.initialized = initOK[BMP]};
     return dev->initialized;
 }
 bool AHT20_Init(AHT20 *dev, I2C_HandleTypeDef *bus)
@@ -100,6 +117,7 @@ bool BMI270_Init(BMI270 *dev, I2C_HandleTypeDef *bus, uint8_t address)
     assert(bus == &hi2c2 && address == BMI270_ADDRESS_LOW);
     ++initCalls[BMI];
     *dev = (BMI270){.initialized = initOK[BMI]};
+    testBmi = dev;
     return dev->initialized;
 }
 bool IIS2MDC_Init(IIS2MDC *dev, I2C_HandleTypeDef *bus)
@@ -187,6 +205,7 @@ bool GNSS_GetData(GNSSData *data)
 
 static void reset(void)
 {
+    storedResult = CAL_STORE_EMPTY; storeOK = true; storeWrites = groundSamples = 0;
     for (unsigned i = 0; i < DEVICE_COUNT; ++i) {
         initOK[i] = readOK[i] = true;
         initCalls[i] = readCalls[i] = 0;
@@ -380,22 +399,45 @@ static void test_calibration(void)
     assert(initCalls[GNSS] == 1 && initCalls[BATTERY] == 1);
     assert(SensorAcquisition_GetGroundPressure() == 101234);
     assert(SensorAcquisition_StartCalibration(&c) && calibrationStarts == 1);
-    assert(SensorAcquisition_GetCalibrationStatus() == SENSOR_CAL_RUNNING);
+    assert(SensorAcquisition_UpdateCalibration() == SENSOR_CAL_RUNNING);
     testBmi->calibration_state = BMI270_CAL_DONE;
-    assert(SensorAcquisition_GetCalibrationStatus() == SENSOR_CAL_SUCCESS);
+    testBmi->calibration.gyro_bias_dps[0] = 0.25f;
+    testBmi->calibration.gyro_bias_dps[1] = -0.125f;
+    testBmi->calibration.gyro_bias_dps[2] = 0.5f;
+    assert(SensorAcquisition_GetCalibrationStatus() == SENSOR_CAL_RUNNING && storeWrites == 0);
+    assert(SensorAcquisition_UpdateCalibration() == SENSOR_CAL_SUCCESS);
+    assert(SensorAcquisition_HasCalibration() && storeWrites == 1);
+    assert(storedCalibration.groundPressurePa == 101234 && storedCalibration.gyroBiasDps[1] == -0.125f);
+    assert(SensorAcquisition_UpdateCalibration() == SENSOR_CAL_SUCCESS && storeWrites == 1);
+    unsigned sampled = groundSamples;
+    assert(SensorAcquisition_Init()); /* MCU reboot: no ground sampling, restored biases. */
+    assert(groundSamples == sampled && SensorAcquisition_HasCalibration());
+    assert(testBmi->calibration.gyro_bias_dps[1] == -0.125f);
+    assert(SensorAcquisition_GetGroundPressure() == 101234);
+    storeOK = false;
+    assert(SensorAcquisition_StartCalibration(&c));
+    testBmi->calibration.gyro_bias_dps[1] = 1.0f;
+    testBmi->calibration_state = BMI270_CAL_DONE;
+    assert(SensorAcquisition_UpdateCalibration() == SENSOR_CAL_FAILED);
+    assert(testBmi->calibration.gyro_bias_dps[1] == -0.125f); /* rollback */
+    assert(storedCalibration.gyroBiasDps[1] == -0.125f);
+    storeOK = true;
     assert(SensorAcquisition_StartCalibration(&c));
     testBmi->calibration_state = BMI270_CAL_MOTION;
-    assert(SensorAcquisition_GetCalibrationStatus() == SENSOR_CAL_FAILED);
+    assert(SensorAcquisition_UpdateCalibration() == SENSOR_CAL_FAILED);
     tick = UINT32_MAX - 100;
     assert(SensorAcquisition_StartCalibration(&c));
     tick += CALIBRATION_GYRO_TIMEOUT_MS;
-    assert(SensorAcquisition_GetCalibrationStatus() == SENSOR_CAL_FAILED);
+    assert(SensorAcquisition_UpdateCalibration() == SENSOR_CAL_FAILED);
     assert(testBmi->calibration_state == BMI270_CAL_IDLE);
     initOK[MAG] = false;
     unsigned before = calibrationStarts;
     assert(!SensorAcquisition_StartCalibration(&c) && calibrationStarts == before);
-    assert(SensorAcquisition_GetCalibrationStatus() == SENSOR_CAL_FAILED);
+    assert(SensorAcquisition_UpdateCalibration() == SENSOR_CAL_FAILED);
     assert(!SensorAcquisition_StartCalibration(NULL));
+    initOK[MAG] = true; storedResult = CAL_STORE_ERROR;
+    assert(!SensorAcquisition_Init());
+    assert(!SensorAcquisition_HasCalibration() && SensorAcquisition_GetGroundPressure() == 0);
 }
 
 int main(void)

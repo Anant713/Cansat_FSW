@@ -43,21 +43,24 @@ seed the peak; the next ASCENT check does. The peak remains unchanged in launch
 pad, DESCENT_1, DESCENT_2 and touchdown. Mission state is still recovered from flash. Legacy flash bit 8
 (the old 800 m latch) is accepted but ignored and no longer written.
 
-The BMP driver establishes a new relative-height zero during each initialization.
-Consequently, after a mid-flight restart these gates use height relative to the
-restart location, and the pre-reset peak is unavailable. The separately persisted
-navigation reference does not correct `bmp.relativeHeightM`. Preserving launch-
-relative gates and the peak through a reboot would require a separate recovery
-change to the BMP reference/peak storage.
+SensorAcquisition restores the saved launch pressure and gyro biases after driver
+initialization. BMP initialization no longer establishes a new zero. Consequently,
+height gates remain relative to launch ground after a reboot. Without a valid
+calibration pair, BMP height stays invalid and cannot advance the state machine.
+The pre-reset ASCENT peak remains unavailable; persisting it is separate work.
+See [calibration and flash recovery](Calibration.md).
 
 ## Recovery and flash
 
 Sector 11, `0x080E0000` through `0x080FFFFF`, is reserved for a 128 KiB journal.
 The linker limits firmware to the preceding 896 KiB. Each 16-byte record contains
-a versioned magic, state/flags/ground-pressure reference, their bitwise complement, and a commit word written
+a versioned magic, state/flags, their bitwise complement, and a commit word written
 last. Startup scans for the last valid committed record, skipping torn records.
-State changes, ground reference and deployment status are committed before dependent
-state actions. No sector erase occurs in flight. There are 8192 record slots;
+State changes and deployment status are committed before dependent
+state actions. Calibration uses separate 32-byte CRC-protected records in this
+same journal, allocated by the common append allocator. Old state records with
+pressure bits are accepted for mission recovery but those pressure bits are ignored.
+No sector erase occurs in flight. There are 8192 slots of 16 bytes (a calibration consumes two);
 a full journal or failed write inhibits further transitions and exposes
 `StateMachine_GetStatus()->persistenceOK == false`.
 
@@ -67,7 +70,8 @@ not a fabricated launch pad state. `flight_state_init_ok` exposes initialization
 success. A committed touchdown is recovered as touchdown on the next boot.
 
 `StateMachine_BeginNewMission()` is an explicit ground-only reset to launch pad,
-appended to the journal; it is never called automatically. Reboot afterward to
+appended to the journal; it is never called automatically and does not erase
+calibration. Explicitly recalibrate at a new launch location. Reboot afterward to
 start a new logging session. The future ground-command parser can invoke this
 operation when the command is defined. Preserve sector 11 when reflashing if
 recovery is desired; programmer mass erase destroys the journal. Bench erase of
@@ -75,9 +79,14 @@ sector 11 resets the journal and must not be done during a mission.
 
 ## Entry actions
 
-- Ascent powers DVR, raises Capture and timestamps it. After 1000 ms, Capture is
-  lowered and `camera.isRecording` becomes true. Recovery in ascent or descent
-  repeats this startup sequence because GPIO outputs were reset.
+- Ascent calls `CameraControl_Init`: Capture low, DVR high for
+  `CAMERA_INIT_PULSE_MS` (1000 ms), DVR low, then wait `CAMERA_INIT_DELAY_MS`
+  (default 200 ms; tune in CameraControl.h). Update then calls CameraControl_Start:
+  DVR high and Capture high for CAMERA_START_PULSE_MS (1000 ms), then Capture low
+  and `camera.isRecording=true`. Recovery in ascent or descent repeats the full
+  sequence because GPIO outputs were reset. Repeated Init/Start requests during
+  startup/recording do not restart it; Stop cancels pending startup. The off delay
+  starts from the actual DVR falling edge, including when the loop runs late.
 - Descent 1 keeps camera recording active; it adds no actuator command.
 - Descent 2 raises HDRM for 2000 ms, then lowers it and commits deployment complete.
   The confirmed recovery policy repeats a full pulse if completion was not committed.
@@ -96,8 +105,10 @@ pulse timing would need hardware timers or interrupt-driven output shutdown.
 ## Camera test and verification
 
 Configure/build `TestCamera` and flash `build/TestCamera/test_camera.elf`.
-Send `record` on the USART3 console to power DVR and pulse Capture high for one
-second; send `stop` to raise Capture and switch DVR off. `status` reports camera
+Send `record` on the USART3 console to run the initialization pulse, off delay,
+and recording-start pulse; send `stop` to cancel any phase, raise Capture and
+switch DVR off. `status` reports camera phase (0 off, 1 init high, 2 off delay,
+3 capture high, 4 recording) and camera
 and console diagnostics. There is no automatic ten-second stop.
 `test_camera`, `test_camera_complete`, and console output expose its progress.
 This test does not write the mission journal. Verify the actual saved
@@ -118,18 +129,16 @@ BMP pressure in Pa and the standard-atmosphere pressure-ratio approximation:
 
 `altitude_m = 44330 * (1 - (pressure_pa / ground_pressure_pa)^0.1903)`
 
-The first fresh valid BMP sample while on the launch pad supplies the driver's
-startup-averaged `bmp.groundPressurePa`, rounded to whole Pa and committed to the mission journal before the
-altitude becomes valid. Start a new mission while stationary at the launch site.
+The reference comes from `bmp.groundPressurePa`, explicitly calibrated and saved
+with gyro biases or restored on startup by SensorAcquisition. It is stored as a
+binary32 float without whole-Pa rounding. Start calibration stationary at the launch site.
 The reference stays fixed; it is not continuously adjusted while waiting or flying.
 No extra filtering is applied beyond the existing BMP driver configuration.
 Atmospheric temperature/weather variation and pressure disturbances affect accuracy.
 
-Ground pressure occupies bits 10..26 of the journal payload; zero means unset.
-Mission transitions preserve it, and an explicit new mission clears it. A recovered
-mid-flight state without a reference (including older firmware records) cannot
-automatically calibrate at its current height: altitude stays invalid. A recovered
-launch-pad state with no reference can establish it from a fresh sample.
+Navigation never writes flash or samples a new reference automatically. Both
+launch-pad and airborne boots without a valid calibration pair leave altitude
+invalid. Legacy pressure-only mission records do not provide a complete calibration.
 
 Pressure must be finite and within 30000..110000 Pa. Samples older than 1000 ms
 invalidate auxiliary navigation altitude while retaining its last numerical value.
@@ -137,10 +146,13 @@ This does not control the state gates: they separately check BMP height validity
 and freshness. The altitude timestamp is the sensor timestamp, never the loop time.
 Negative relative altitude is preserved. Telemetry ALTITUDE uses BMP relative
 height, not navigation altitude; negative BMP height encodes as the unsigned
-field's unavailable sentinel. The auxiliary reference persists
-at 1 Pa resolution (roughly 0.08 m near sea level).
+field's unavailable sentinel. Both paths now use the same restored reference.
 
 Host tests also check a 500 m pressure example, negative height, stale/invalid
-pressure, reference-write failure, recovery without re-zeroing, and a legacy
-mid-flight record with no reference.
+pressure and rejection of a legacy pressure-only reference. Calibration tests
+separately cover complete-pair flash recovery, interrupted writes and rollback.
+
+For pressure profiles sent from a PC over the console UART, with the real flight
+loop, commands, camera/HDRM outputs, SD logging and flash recovery, see
+[TestHILS setup and usage](TestHILS.md). Its GUI displays the MCU-reported state.
 

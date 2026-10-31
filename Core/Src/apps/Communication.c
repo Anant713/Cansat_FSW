@@ -8,6 +8,14 @@ extern UART_HandleTypeDef huart4;
 static uint8_t telemetryBuffer[COMMUNICATION_TELEMETRY_CAPACITY];
 static uint8_t commandPosition, commandId;
 static bool calibrationPending, calibrationIsLatest;
+static CommandObserver commandObserver;
+static CommunicationRxObserver rxObserver;
+void Communication_SetRxObserver(CommunicationRxObserver observer) { rxObserver = observer; }
+void Communication_SetCommandObserver(CommandObserver observer) { commandObserver = observer; }
+static void notifyCommand(uint8_t id, CommandEvent event, bool success)
+{
+    if (commandObserver) commandObserver((GroundCommand)id, event, success);
+}
 _Static_assert(COMMUNICATION_TELEMETRY_CAPACITY <= XBEE_TX_CAPACITY,
                "Complete telemetry packet must fit XBee TX");
 
@@ -41,6 +49,7 @@ static void executeCommand(Cansat *cansat, uint8_t id)
     ++cansat->telemetry.receivedPacketCount;
     cansat->telemetry.commandExecuted = false;
     calibrationIsLatest = false;
+    notifyCommand(id, COMMAND_RECEIVED, false);
     switch (id) {
     case COMMAND_TELEMETRY_ON:
     case COMMAND_TELEMETRY_OFF:
@@ -59,6 +68,8 @@ static void executeCommand(Cansat *cansat, uint8_t id)
     }
     if (cansat->telemetry.commandExecuted)
         cansat->telemetry.lastExecutedCommand = id;
+    notifyCommand(id, calibrationIsLatest ? COMMAND_PENDING : COMMAND_FINISHED,
+                  cansat->telemetry.commandExecuted);
 }
 
 void Communication_ProcessCommand(Cansat *cansat, const uint8_t *bytes, size_t length)
@@ -87,19 +98,21 @@ void Communication_Update(Cansat *cansat)
     if (calibrationPending) {
         SensorCalibrationStatus result = SensorAcquisition_GetCalibrationStatus();
         if (result != SENSOR_CAL_RUNNING) {
-            bool success = result == SENSOR_CAL_SUCCESS &&
-                StateMachine_RecalibrateGroundPressure(cansat, SensorAcquisition_GetGroundPressure());
+            bool success = result == SENSOR_CAL_SUCCESS; /* Acquisition already committed both values. */
             if (success) cansat->telemetry.lastExecutedCommand = COMMAND_CALIBRATE_SENSORS;
             if (calibrationIsLatest) cansat->telemetry.commandExecuted = success;
             calibrationPending = calibrationIsLatest = false;
+            notifyCommand(COMMAND_CALIBRATE_SENSORS, COMMAND_FINISHED, success);
         }
     }
     XBee_Process();
     uint8_t bytes[COMMUNICATION_RX_BUDGET];
     uint16_t length;
     XBeeResult result = XBee_Read(bytes, sizeof(bytes), &length);
-    if (result == XBEE_OK && length != 0U)
+    if (result == XBEE_OK && length != 0U) {
+        if (rxObserver) rxObserver(bytes, length);
         Communication_ProcessCommand(cansat, bytes, length);
+    }
     else if (result != XBEE_OK)
         commandPosition = 0; /* Never join fragments across known RX loss/errors. */
 }

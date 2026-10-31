@@ -9,8 +9,14 @@
 #ifndef TEST_WITH_TELEMETRY
 #define TEST_WITH_TELEMETRY 0
 #endif
+#ifndef TEST_PROCESS_TELECOMMANDS
+#define TEST_PROCESS_TELECOMMANDS 1
+#endif
 #if TEST_WITH_TELEMETRY
 #include "apps/Communication.h"
+#if !TEST_PROCESS_TELECOMMANDS
+#include "drivers/XBee.h"
+#endif
 
 #endif
 
@@ -118,7 +124,17 @@ void App_RunOnce(void)
     now = HAL_GetTick();
     test_acquisition_logging_data.telemetry.uptimeMs = now;
 #if TEST_WITH_TELEMETRY
-    if (test_telemetry_init_ok) Communication_Update(&test_acquisition_logging_data);
+    if (test_telemetry_init_ok) {
+#if TEST_PROCESS_TELECOMMANDS
+        Communication_Update(&test_acquisition_logging_data);
+#else
+        /* TX transport service only. Drain/discard incoming bytes; no parser. */
+        XBee_Process();
+        uint8_t ignored[COMMUNICATION_RX_BUDGET];
+        uint16_t ignoredLength;
+        (void)XBee_Read(ignored, sizeof(ignored), &ignoredLength);
+#endif
+    }
     now = HAL_GetTick();
     test_acquisition_logging_data.telemetry.uptimeMs = now;
     if (!stopped && test_telemetry_init_ok &&

@@ -10,8 +10,8 @@ typedef struct {
     float pressure;                /* Pa, not hPa */
     uint32_t timestamp_ms;          /* host read time */
     bool valid;
-    float groundPressurePa;        /* Startup average, same calibration as pressure. */
-    float relativeHeightM;         /* Relative to this initialization location. */
+    float groundPressurePa;        /* Explicitly calibrated/restored launch reference. */
+    float relativeHeightM;         /* Relative to the saved launch reference. */
     bool heightValid;
 } BMP280Data;
 typedef struct {
@@ -29,10 +29,14 @@ typedef struct {
 
 /* Startup only: reset + factory coefficients; x2 temperature, x16 pressure,
  * filter x4, 62.5 ms standby, normal mode (~9.5 Hz).
- * Hold at ground level: waits 1 s then averages 16 readings 110 ms apart
- * (about 2.7 s total). Init fails if ground sampling fails. Runtime reads
- * do not wait for conversions. Reinitialization establishes a new local zero. */
+ * Does not sample ground pressure. Height stays invalid until explicitly
+ * calibrated or restored using SetGroundPressure. Reads do not wait. */
 bool BMP280_Init(BMP280 *dev, I2C_HandleTypeDef *bus, uint8_t address);
+/* Explicit ground-only operation in NORMAL mode: settles 1 s, then averages
+ * 16 samples 110 ms apart (~2.7 s). Failure retains the previous reference. */
+bool BMP280_CalibrateGroundPressure(BMP280 *dev);
+/* Restore a validated reference without reading the sensor or recalibrating. */
+bool BMP280_SetGroundPressure(BMP280 *dev, float pressurePa);
 /* May return SENSOR_NOT_READY while a measurement is in progress; retry later.
  * Setting FORCED triggers one measurement. Read consumes it, then mode=SLEEP. */
 bool BMP280_SetMode(BMP280 *dev, BMP280Mode mode);

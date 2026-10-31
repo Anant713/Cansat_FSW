@@ -29,13 +29,12 @@ volatile bool sensor_calibrate_gyro;
 volatile BMI270CalibrationState sensor_gyro_calibration_state;
 BMI270Calibration sensor_saved_imu;
 
-/* Replace these identity values with measured calibration parameters.
- * These are examples of storing parameters in code, not measured calibration. */
+/* Replace these IMU identity values with measured calibration parameters.
+ * The magnetometer uses the measured defaults in IIS2MDC_Init directly. */
 static const BMI270Calibration saved_imu = {
     .accel = SENSOR_CALIBRATION_3D_IDENTITY,
     .gyro_bias_dps = {0, 0, 0}
 };
-static const SensorCalibration3D saved_mag = SENSOR_CALIBRATION_3D_IDENTITY;
 static uint32_t last_poll, last_humidity_start;
 static uint32_t last_report;
 static bool stream = true;
@@ -89,11 +88,12 @@ void App_Init(void)
     Console_Write("Sensor test initializing...\r\n");
     /* Independent attempts: a missing device does not hide results from others. */
     sensor_init_ok[0] = BMP280_Init(&sensor_bmp, &hi2c2, TEST_BMP_ADDRESS);
+    /* This standalone bench test explicitly establishes its local zero. */
+    if (sensor_init_ok[0]) sensor_init_ok[0] = BMP280_CalibrateGroundPressure(&sensor_bmp);
     sensor_init_ok[1] = AHT20_Init(&sensor_aht, &hi2c2);
     sensor_init_ok[2] = BMI270_Init(&sensor_bmi, &hi2c2, TEST_BMI_ADDRESS);
     sensor_init_ok[3] = IIS2MDC_Init(&sensor_mag, &hi2c2);
     if (sensor_init_ok[2]) sensor_init_ok[2] = BMI270_SetCalibration(&sensor_bmi, &saved_imu);
-    if (sensor_init_ok[3]) sensor_init_ok[3] = IIS2MDC_SetCalibration(&sensor_mag, &saved_mag);
     sensor_status[0] = sensor_bmp.io.status;
     sensor_status[1] = sensor_aht.io.status;
     sensor_status[2] = sensor_bmi.io.status;

@@ -13,7 +13,7 @@ bool IIS2MDC_Init(IIS2MDC *dev, I2C_HandleTypeDef *bus)
     if (dev == NULL) return false;
     memset(dev, 0, sizeof(*dev));
     dev->io = (SensorI2C){bus, IIS2MDC_ADDRESS, SENSOR_OK};
-    dev->calibration = (SensorCalibration3D)SENSOR_CALIBRATION_3D_IDENTITY;
+    dev->calibration = (SensorCalibration3D)IIS2MDC_DEFAULT_CALIBRATION;
     if (bus == NULL) return Sensor_Fail(&dev->io, SENSOR_BAD_ARGUMENT);
     HAL_Delay(20);
     uint8_t id, config;

@@ -15,15 +15,12 @@ static bool heightSampleSeen;
 _Static_assert(STATE_HEIGHT_CONFIRM_SAMPLES > 0U &&
                STATE_HEIGHT_CONFIRM_SAMPLES <= UINT32_MAX, "Invalid height debounce count");
 
-static uint32_t groundPressurePa;
-
 const StateMachineStatus *StateMachine_GetStatus(void) { return &status; }
 
 static bool persist(CansatMissionState state, bool deployed)
 {
     status.persistenceOK = MissionStore_Save((uint32_t)state |
-        (deployed ? 0x200U : 0U) |
-        (groundPressurePa << MISSION_PRESSURE_SHIFT));
+        (deployed ? 0x200U : 0U));
     return status.persistenceOK;
 }
 
@@ -31,7 +28,7 @@ static void enter(Cansat *c)
 {
     status.heightConfirmCount = 0;
     if (c->missionState >= CANSAT_STATE_ASCENT && c->missionState <= CANSAT_STATE_DESCENT_2)
-        CameraControl_Start(&c->camera);
+        CameraControl_Init(&c->camera);
     if (c->missionState == CANSAT_STATE_DESCENT_2 && !status.deploymentComplete) {
         Switches_HDRM(true);
         hdrmStart = HAL_GetTick();
@@ -55,7 +52,6 @@ bool StateMachine_Init(Cansat *c)
     heightSampleSeen = false;
     status = (StateMachineStatus){0};
     uint32_t payload = 0;
-    groundPressurePa = 0;
     c->navigation.groundPressurePa = 0;
     c->navigation.altitudeValid = false;
     MissionStoreResult result = MissionStore_Load(&payload);
@@ -63,8 +59,8 @@ bool StateMachine_Init(Cansat *c)
     if (result == MISSION_STORE_ERROR) return false;
     if (result == MISSION_STORE_EMPTY && !persist(CANSAT_STATE_LAUNCH_PAD, false)) return false;
     status.recovered = result == MISSION_STORE_VALID;
-    groundPressurePa = (payload >> MISSION_PRESSURE_SHIFT) & MISSION_PRESSURE_MASK;
-    c->navigation.groundPressurePa = (float)groundPressurePa;
+    /* Legacy pressure bits are accepted by MissionStore but not used: the
+     * complete calibration tuple is restored by SensorAcquisition. */
     status.persistenceOK = true;
     status.deploymentComplete = (payload & 0x200U) != 0;
     c->missionState = (CansatMissionState)(payload & 0xffU);
@@ -78,12 +74,7 @@ bool StateMachine_BeginNewMission(Cansat *c)
     if (!c) return false;
     uint32_t ignored;
     (void)MissionStore_Load(&ignored);
-    uint32_t previousPressure = groundPressurePa;
-    groundPressurePa = 0;
-    if (!persist(CANSAT_STATE_LAUNCH_PAD, false)) {
-        groundPressurePa = previousPressure;
-        return false;
-    }
+    if (!persist(CANSAT_STATE_LAUNCH_PAD, false)) return false;
     c->navigation.groundPressurePa = 0;
     c->navigation.altitudeValid = false;
     Switches_HDRM(false);
@@ -94,30 +85,6 @@ bool StateMachine_BeginNewMission(Cansat *c)
     c->missionState = CANSAT_STATE_LAUNCH_PAD;
     initialized = true;
     enter(c);
-    return true;
-}
-
-bool StateMachine_SetGroundPressure(Cansat *c, float pressurePa)
-{
-    if (groundPressurePa != 0U) return false;
-    return StateMachine_RecalibrateGroundPressure(c, pressurePa);
-}
-
-bool StateMachine_RecalibrateGroundPressure(Cansat *c, float pressurePa)
-{
-    if (!c || !initialized || !status.persistenceOK ||
-        c->missionState != CANSAT_STATE_LAUNCH_PAD || !isfinite(pressurePa) ||
-        pressurePa < 30000.0f || pressurePa > 110000.0f) return false;
-    uint32_t previousPressure = groundPressurePa;
-    groundPressurePa = (uint32_t)roundf(pressurePa);
-    if (!persist(c->missionState, status.deploymentComplete)) {
-        groundPressurePa = previousPressure;
-        return false;
-    }
-    c->navigation.groundPressurePa = (float)groundPressurePa;
-    c->navigation.altitudeValid = false;
-    status.heightConfirmCount = 0;
-    heightSampleSeen = false;
     return true;
 }
 

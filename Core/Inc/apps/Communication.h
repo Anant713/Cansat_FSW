@@ -21,6 +21,17 @@ typedef enum {
     COMMAND_CALIBRATE_SENSORS = 3
 } GroundCommand;
 
+/* Optional main-loop observer for console diagnostics; never called in an ISR.
+ * RECEIVED precedes execution; PENDING means asynchronous calibration started;
+ * FINISHED reports success/failure, including later calibration completion. */
+typedef enum { COMMAND_RECEIVED, COMMAND_PENDING, COMMAND_FINISHED } CommandEvent;
+typedef void (*CommandObserver)(GroundCommand id, CommandEvent event, bool success);
+void Communication_SetCommandObserver(CommandObserver observer);
+/* Optional raw RX tap, called in main-loop context before parsing. The bytes
+ * are borrowed for this call only; the observer must not consume XBee RX. */
+typedef void (*CommunicationRxObserver)(const uint8_t *bytes, size_t length);
+void Communication_SetRxObserver(CommunicationRxObserver observer);
+
 /* Once after CubeMX UART4/DMA initialization, in main-loop context. */
 bool Communication_Init(void);
 

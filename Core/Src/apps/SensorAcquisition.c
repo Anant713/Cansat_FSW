@@ -1,5 +1,7 @@
 #include "apps/SensorAcquisition.h"
 #include "apps/Cansat.h"
+#include "drivers/CalibrationStore.h"
+#include <string.h>
 
 /* Match the address pins and the receiver's current baud rate on the board. */
 #define ACQUISITION_BMP_ADDRESS BMP280_ADDRESS_HIGH // 
@@ -19,10 +21,33 @@ static bool batteryInitialized;
 static uint32_t lastHumidityStart;
 static SensorCalibrationStatus calibrationStatus;
 static uint32_t calibrationStarted;
+static SensorCalibrationRecord savedCalibration;
+static bool calibrationValid;
+
+static bool restoreCalibration(void)
+{
+    bool bmpOK = false, bmiOK = false;
+    if (bmp.initialized) {
+        if (calibrationValid) bmpOK = BMP280_SetGroundPressure(&bmp, savedCalibration.groundPressurePa);
+        else { bmp.groundPressureValid = false; bmp.groundPressurePa = 0.0f; }
+    }
+    if (bmi.initialized) {
+        BMI270Calibration correction;
+        if (BMI270_GetCalibration(&bmi, &correction)) {
+            if (calibrationValid)
+                memcpy(correction.gyro_bias_dps, savedCalibration.gyroBiasDps, sizeof(correction.gyro_bias_dps));
+            else memset(correction.gyro_bias_dps, 0, sizeof(correction.gyro_bias_dps));
+            bmiOK = BMI270_SetCalibration(&bmi, &correction);
+        }
+    }
+    return bmpOK && bmiOK;
+}
 
 bool SensorAcquisition_Init(void)
 {
     calibrationStatus = SENSOR_CAL_IDLE;
+    CalibrationStoreResult stored = CalibrationStore_Load(&savedCalibration);
+    calibrationValid = stored == CAL_STORE_VALID;
     /* Do not short-circuit startup when one device is absent. */
     bool bmpOK = BMP280_Init(&bmp, &hi2c2, ACQUISITION_BMP_ADDRESS);
     bool ahtOK = AHT20_Init(&aht, &hi2c2);
@@ -31,13 +56,14 @@ bool SensorAcquisition_Init(void)
     batteryInitialized = Battery_Init();
     gnssInitialized = GNSS_Init(&huart6, ACQUISITION_GNSS_BAUD);
     lastHumidityStart = HAL_GetTick() - HUMIDITY_PERIOD_MS;
-
-    return bmpOK && ahtOK && bmiOK && magOK && batteryInitialized && gnssInitialized;
+    bool restored = !calibrationValid || restoreCalibration();
+    return bmpOK && ahtOK && bmiOK && magOK && batteryInitialized && gnssInitialized &&
+           restored && stored != CAL_STORE_ERROR;
 }
 
 bool SensorAcquisition_StartCalibration(Cansat *c)
 {
-    if (c == NULL) return false;
+    if (c == NULL || c->missionState != CANSAT_STATE_LAUNCH_PAD) return false;
     if (calibrationStatus == SENSOR_CAL_RUNNING) return true;
     BMI270Calibration imuCalibration;
     SensorCalibration3D magneticCalibration;
@@ -53,6 +79,7 @@ bool SensorAcquisition_StartCalibration(Cansat *c)
     c->navigation.altitudeValid = false;
     bool bmpOK = BMP280_Init(&bmp, &hi2c2, ACQUISITION_BMP_ADDRESS);
     if (bmpOK) bmpOK = BMP280_SetCalibration(&bmp, temperatureOffset, pressureOffset);
+    if (bmpOK) bmpOK = BMP280_CalibrateGroundPressure(&bmp);
     bool ahtOK = AHT20_Init(&aht, &hi2c2);
     if (ahtOK) ahtOK = AHT20_SetCalibration(&aht, humidityOffset);
     bool bmiOK = BMI270_Init(&bmi, &hi2c2, ACQUISITION_BMI_ADDRESS);
@@ -60,27 +87,49 @@ bool SensorAcquisition_StartCalibration(Cansat *c)
     bool magOK = IIS2MDC_Init(&mag, &hi2c2);
     if (magOK && magSaved) magOK = IIS2MDC_SetCalibration(&mag, &magneticCalibration);
     lastHumidityStart = HAL_GetTick() - HUMIDITY_PERIOD_MS;
-    if (!(bmpOK && ahtOK && bmiOK && magOK)) return false;
+    if (!(bmpOK && ahtOK && bmiOK && magOK)) {
+        (void)restoreCalibration();
+        return false;
+    }
     if (!BMI270_StartGyroCalibration(&bmi, CALIBRATION_GYRO_SAMPLES,
-                                    CALIBRATION_GYRO_TIMEOUT_MS)) return false;
+                                    CALIBRATION_GYRO_TIMEOUT_MS)) {
+        (void)restoreCalibration();
+        return false;
+    }
     calibrationStarted = HAL_GetTick();
     calibrationStatus = SENSOR_CAL_RUNNING;
     return true;
 }
 
-SensorCalibrationStatus SensorAcquisition_GetCalibrationStatus(void)
+SensorCalibrationStatus SensorAcquisition_UpdateCalibration(void)
 {
     if (calibrationStatus == SENSOR_CAL_RUNNING) {
-        if (bmi.calibration_state == BMI270_CAL_DONE)
-            calibrationStatus = SENSOR_CAL_SUCCESS;
+        if (bmi.calibration_state == BMI270_CAL_DONE) {
+            BMI270Calibration correction;
+            SensorCalibrationRecord candidate = {.groundPressurePa = bmp.groundPressurePa};
+            bool ready = bmp.groundPressureValid && BMI270_GetCalibration(&bmi, &correction);
+            if (ready) memcpy(candidate.gyroBiasDps, correction.gyro_bias_dps, sizeof(candidate.gyroBiasDps));
+            if (ready && CalibrationStore_Save(&candidate)) {
+                savedCalibration = candidate;
+                calibrationValid = true;
+                calibrationStatus = SENSOR_CAL_SUCCESS;
+            } else {
+                (void)restoreCalibration();
+                calibrationStatus = SENSOR_CAL_FAILED;
+            }
+        }
         else if (bmi.calibration_state != BMI270_CAL_COLLECTING ||
                  (uint32_t)(HAL_GetTick() - calibrationStarted) >= CALIBRATION_GYRO_TIMEOUT_MS) {
             BMI270_CancelGyroCalibration(&bmi);
+            (void)restoreCalibration();
             calibrationStatus = SENSOR_CAL_FAILED;
         }
     }
     return calibrationStatus;
 }
+
+bool SensorAcquisition_HasCalibration(void) { return calibrationValid; }
+SensorCalibrationStatus SensorAcquisition_GetCalibrationStatus(void) { return calibrationStatus; }
 
 float SensorAcquisition_GetGroundPressure(void)
 {
@@ -93,6 +142,8 @@ bool SensorAcquisition_UpdateBMP(Cansat *cansat)
     BMP280Data sample;
     if (!BMP280_Read(&bmp, &sample)) return false;
     cansat->bmp = sample;
+    /* A candidate zero must not drive transitions before its atomic commit. */
+    if (calibrationStatus == SENSOR_CAL_RUNNING) cansat->bmp.heightValid = false;
     return true;
 }
 
@@ -161,4 +212,5 @@ void SensorAcquisition_Update(Cansat *cansat)
     (void)SensorAcquisition_UpdateBMI(cansat);
     (void)SensorAcquisition_UpdateMag(cansat);
     (void)SensorAcquisition_UpdateBattery(cansat);
+    (void)SensorAcquisition_UpdateCalibration();
 }

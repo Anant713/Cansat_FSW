@@ -181,7 +181,7 @@ AHT20, BMI270 and IIS2MDC; GNSS and battery are not restarted. Existing software
 corrections are saved before initialization and reapplied afterward. Old sensor
 snapshots are invalidated so failed initialization cannot expose old data as fresh.
 
-- BMP initialization averages 16 readings after settling, establishing a new
+- The explicit `BMP280_CalibrateGroundPressure` call averages 16 readings after settling, establishing a new
   ground pressure. This is height-zero calibration, not calibration against a
   reference thermometer/barometer. Existing temperature/pressure offsets are kept.
 - AHT20 initialization checks/restores factory calibration. It does not infer a
@@ -193,8 +193,8 @@ snapshots are invalidated so failed initialization cannot expose old data as fre
   preserved; no gravity vector is subtracted as if it were a zero-g bias.
 - IIS2MDC initialization enables continuous hardware offset cancellation. Existing
   hard/soft-iron coefficients are reapplied. It does not derive new coefficients:
-  that requires a separate multi-orientation calibration. With no prior correction,
-  the driver's identity correction remains in use.
+  that requires a separate multi-orientation calibration. On startup the driver
+  uses the compiled `IIS2MDC_DEFAULT_CALIBRATION` board coefficients.
 
 The initial reinitialization phase blocks the main loop for several seconds
 (BMP alone about 2.7 seconds). UART DMA/interrupts remain active, within queue
@@ -203,12 +203,12 @@ gyro sampling then progresses asynchronously. This is a ground-only operation,
 not a guarantee of uninterrupted 1/2 Hz output during calibration.
 
 `commandExecuted` remains false while pending and becomes true only after gyro
-completion and a successful flash save of the new ground pressure through
-`StateMachine_RecalibrateGroundPressure`. The flash reference replaces the previous
-launch-pad reference. Failed operations can have partially reinitialized sensors;
-there is no multi-sensor rollback. Repeat calibration after resolving the cause.
-Existing startup recovery still establishes a fresh BMP driver reference at boot;
-restoring the saved reference into BMP on an airborne reboot remains separate work.
+completion and SensorAcquisition's successful atomic flash save of ground pressure
+and all three gyro biases. Failure restores the previous saved pair in initialized
+drivers; hardware initialization failures still require resolution. Startup restores
+the pair after initializing hardware and does not recalculate ground pressure.
+Missing calibration leaves height invalid until a launch-pad calibration command.
+See [calibration and flash recovery](Calibration.md) for record format and failure handling.
 
 Repeated calibration requests while pending count as received packets but do not
 restart sampling. Telemetry commands remain usable during asynchronous sampling.

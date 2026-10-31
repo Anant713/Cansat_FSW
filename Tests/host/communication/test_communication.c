@@ -18,8 +18,8 @@ static uint16_t sentLength;
 static const uint8_t incoming[] = {'C', 'M', 'D', 0, 'X', '\r'};
 static StateMachineStatus missionStatus;
 static SensorCalibrationStatus calibrationResult;
-static bool calibrationStartOK, referenceSaveOK;
-static unsigned calibrationStarts, referenceSaves;
+static bool calibrationStartOK;
+static unsigned calibrationStarts;
 const StateMachineStatus *StateMachine_GetStatus(void) { return &missionStatus; }
 bool SensorAcquisition_StartCalibration(Cansat *c)
 {
@@ -29,11 +29,6 @@ bool SensorAcquisition_StartCalibration(Cansat *c)
 }
 SensorCalibrationStatus SensorAcquisition_GetCalibrationStatus(void) { return calibrationResult; }
 float SensorAcquisition_GetGroundPressure(void) { return 101234.0f; }
-bool StateMachine_RecalibrateGroundPressure(Cansat *c, float pressure)
-{
-    assert(c != NULL && pressure == 101234.0f); ++referenceSaves;
-    return referenceSaveOK && c->missionState == CANSAT_STATE_LAUNCH_PAD;
-}
 
 uint32_t HAL_GetTick(void) { return tick; }
 XBeeResult XBee_Init(UART_HandleTypeDef *uart)
@@ -348,8 +343,8 @@ static void test_calibration_command(void)
     Cansat_Init(&c);
     assert(Communication_Init());
     const uint8_t cal[] = {0xa5, 3, 0x5a}, off[] = {0xa5, 2, 0x5a};
-    missionStatus.persistenceOK = calibrationStartOK = referenceSaveOK = true;
-    calibrationStarts = referenceSaves = 0;
+    missionStatus.persistenceOK = calibrationStartOK = true;
+    calibrationStarts = 0;
     c.missionState = CANSAT_STATE_ASCENT;
     Communication_ProcessCommand(&c, cal, 3);
     assert(calibrationStarts == 0 && !c.telemetry.commandExecuted);
@@ -358,11 +353,11 @@ static void test_calibration_command(void)
     Communication_ProcessCommand(&c, cal, 3);
     assert(calibrationStarts == 1 && !c.telemetry.commandExecuted);
     Communication_Update(&c);
-    assert(referenceSaves == 0 && !c.telemetry.commandExecuted);
+    assert(!c.telemetry.commandExecuted);
     calibrationResult = SENSOR_CAL_SUCCESS;
     Communication_Update(&c);
-    assert(referenceSaves == 1 && c.telemetry.commandExecuted && c.telemetry.lastExecutedCommand == 3);
-    Communication_Update(&c); assert(referenceSaves == 1);
+    assert(c.telemetry.commandExecuted && c.telemetry.lastExecutedCommand == 3);
+    Communication_Update(&c); assert(c.telemetry.commandExecuted);
     Communication_ProcessCommand(&c, cal, 3);
     Communication_ProcessCommand(&c, off, 3);
     calibrationResult = SENSOR_CAL_SUCCESS;
@@ -375,7 +370,7 @@ static void test_calibration_command(void)
     Communication_Update(&c);
     assert(!c.telemetry.commandExecuted && c.telemetry.lastExecutedCommand == 2);
     Communication_ProcessCommand(&c, cal, 3);
-    calibrationResult = SENSOR_CAL_SUCCESS; referenceSaveOK = false;
+    calibrationResult = SENSOR_CAL_FAILED; /* Includes flash commit failure. */
     Communication_Update(&c);
     assert(!c.telemetry.commandExecuted && c.telemetry.lastExecutedCommand == 2);
     calibrationStartOK = false;

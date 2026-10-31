@@ -5,6 +5,10 @@
 #include <stdint.h>
 
 /* Initialize standalone instances with CameraState state = {0}. */
+typedef enum {
+    CAMERA_OFF = 0, CAMERA_INIT_HIGH, CAMERA_INIT_WAIT,
+    CAMERA_CAPTURE_HIGH, CAMERA_RECORDING
+} CameraPhase;
 typedef struct
 {
     bool isOn;
@@ -12,6 +16,8 @@ typedef struct
     /* Application writes HAL_GetTick() when Switch_Capture goes high.
      * Milliseconds since boot; initialized to 0 by Cansat_Init or {0}. */
     uint32_t lastCaptureHighMs;
+    CameraPhase phase;
+    uint32_t phaseStartedMs;
 } CameraState;
 
 #endif

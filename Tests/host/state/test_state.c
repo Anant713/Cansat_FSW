@@ -60,16 +60,19 @@ int main(void)
     assert(!StateMachine_GetStatus()->recovered);
     sample(&c, 0, 30); assert(c.missionState == CANSAT_STATE_LAUNCH_PAD);
     assert(!StateMachine_GetStatus()->maxHeightValid);
-    sample(&c, 1, 31); assert(c.missionState == CANSAT_STATE_ASCENT && dvr && capture);
+    sample(&c, 1, 31); assert(c.missionState == CANSAT_STATE_ASCENT && dvr && !capture);
     assert(!StateMachine_GetStatus()->maxHeightValid); /* Seed on next ASCENT check. */
     sample(&c, 1000, 100); assert(!c.camera.isRecording);
-    sample(&c, 1001, 120); assert(c.camera.isRecording && !capture);
+    sample(&c, 1001, 120); assert(!dvr && !capture && !c.camera.isRecording);
+    sample(&c, 1001 + CAMERA_INIT_DELAY_MS, 120); assert(dvr && capture && !c.camera.isRecording);
+    sample(&c, 1001 + CAMERA_INIT_DELAY_MS + CAMERA_START_PULSE_MS, 120);
+    assert(c.camera.isRecording && !capture);
     assert(StateMachine_GetStatus()->maxHeightM == 120);
     /* Old arming bit is ignored; reboot seeds a new peak from valid BMP height. */
     reset_outputs(); c = (Cansat){0}; tick = 0;
     assert(StateMachine_Init(&c));
     assert(StateMachine_GetStatus()->recovered && !StateMachine_GetStatus()->maxHeightValid);
-    assert(c.missionState == CANSAT_STATE_ASCENT && dvr && capture);
+    assert(c.missionState == CANSAT_STATE_ASCENT && dvr && !capture);
     c.navigation.altitude = 10000; c.navigation.altitudeValid = true;
     sample(&c, 0, 100);
     sample(&c, 1, 730); assert(StateMachine_GetStatus()->maxHeightM == 730);
@@ -108,12 +111,32 @@ int main(void)
     sample(&c, 2001, 100); assert(c.missionState == CANSAT_STATE_LAUNCH_PAD && !dvr);
     assert(!StateMachine_GetStatus()->persistenceOK);
     writesLeft = -1;
-    /* Camera pulse handles tick rollover. */
+    /* Initialization pulse handles tick rollover; repeat requests do not restart. */
     CameraState camera = {0}; tick = UINT32_MAX - 499U;
     CameraControl_Start(&camera); tick = 499U; CameraControl_Update(&camera);
-    assert(capture && !camera.isRecording);
-    tick = 500U; CameraControl_Update(&camera); assert(!capture && camera.isRecording);
+    assert(dvr && !capture && !camera.isRecording);
+    CameraControl_Init(&camera); CameraControl_Start(&camera);
+    tick = 500U; CameraControl_Update(&camera); assert(!dvr && !capture);
+    tick += CAMERA_INIT_DELAY_MS - 1U;
+    CameraControl_Init(&camera); CameraControl_Start(&camera); CameraControl_Update(&camera);
+    assert(!dvr && camera.phase == CAMERA_INIT_WAIT);
+    ++tick; CameraControl_Update(&camera); assert(dvr && capture);
+    tick += CAMERA_START_PULSE_MS - 1U; CameraControl_Update(&camera); assert(capture);
+    ++tick; CameraControl_Update(&camera); assert(!capture && camera.isRecording);
     CameraControl_Stop(&camera); assert(capture && !dvr && !camera.isRecording);
+    for (unsigned phase = 0; phase < 3; ++phase) {
+        camera = (CameraState){0}; tick = 0; CameraControl_Init(&camera);
+        if (phase >= 1) { tick = CAMERA_INIT_PULSE_MS; CameraControl_Update(&camera); }
+        if (phase >= 2) { tick += CAMERA_INIT_DELAY_MS; CameraControl_Update(&camera); }
+        CameraControl_Stop(&camera); tick += 10000; CameraControl_Update(&camera);
+        assert(!dvr && capture && !camera.isRecording && camera.phase == CAMERA_OFF);
+    }
+    /* A late update must still allow the full off interval after switching low. */
+    camera = (CameraState){0}; tick = 0; CameraControl_Init(&camera);
+    tick = 5000; CameraControl_Update(&camera); assert(!dvr);
+    CameraControl_Update(&camera); assert(!dvr);
+    tick += CAMERA_INIT_DELAY_MS; CameraControl_Update(&camera); assert(dvr && capture);
+    CameraControl_Stop(&camera);
     /* Reset during deployment repeats the pulse; completion survives reboot. */
     memset(flash, 0xff, sizeof(flash));
     uint32_t ignored;
@@ -133,56 +156,40 @@ int main(void)
     for (unsigned i = 0; i < MISSION_STORE_SIZE / 16U; ++i) assert(MissionStore_Save(1));
     assert(!MissionStore_Save(2));
     assert(MissionStore_Load(&ignored) == MISSION_STORE_VALID && ignored == 1);
-    /* Barometric ground calibration persists through ascent reset. */
+    /* Navigation uses the same restored BMP reference as telemetry and gates. */
     memset(flash, 0xff, sizeof(flash)); c = (Cansat){0}; tick = 100;
     assert(StateMachine_Init(&c));
-    c.bmp = (BMP280Data){.pressure=101325, .groundPressurePa=101325, .valid=true, .timestamp_ms=tick};
+    c.bmp = (BMP280Data){.pressure=101325, .groundPressurePa=101325,
+        .valid=true, .heightValid=true, .timestamp_ms=tick};
     BarometricAltitude_Update(&c);
     assert(c.navigation.altitudeValid && fabsf(c.navigation.altitude) < 0.01f);
     assert(c.navigation.groundPressurePa == 101325);
     c.bmp.pressure = 95461; tick = c.bmp.timestamp_ms = 200;
     BarometricAltitude_Update(&c);
     assert(c.navigation.altitude > 499 && c.navigation.altitude < 501);
-    c.bmp.heightValid = true; c.bmp.relativeHeightM = 500;
+    c.bmp.relativeHeightM = 500;
     StateMachine_Update(&c); assert(c.missionState == CANSAT_STATE_ASCENT);
     c = (Cansat){0}; tick = 0;
-    assert(StateMachine_Init(&c) && c.navigation.groundPressurePa == 101325);
-    c.bmp = (BMP280Data){.pressure=95461, .valid=true, .timestamp_ms=0};
+    assert(StateMachine_Init(&c) && c.navigation.groundPressurePa == 0);
+    /* Acquisition restores the reference; state recovery never recalibrates it. */
+    c.bmp = (BMP280Data){.pressure=95461, .groundPressurePa=101325,
+        .valid=true, .heightValid=true, .timestamp_ms=0};
     BarometricAltitude_Update(&c);
     assert(c.navigation.altitude > 499 && c.navigation.altitude < 501);
     tick = 1001; BarometricAltitude_Update(&c); assert(!c.navigation.altitudeValid);
     c.bmp.timestamp_ms = tick; c.bmp.pressure = NAN;
     BarometricAltitude_Update(&c); assert(!c.navigation.altitudeValid);
-    c.bmp.pressure = 0; BarometricAltitude_Update(&c); assert(!c.navigation.altitudeValid);
     c.bmp.pressure = 102000; BarometricAltitude_Update(&c);
     assert(c.navigation.altitudeValid && c.navigation.altitude < 0);
-    assert(StateMachine_BeginNewMission(&c) && c.navigation.groundPressurePa == 0);
-    writesLeft = 0; BarometricAltitude_Update(&c);
+    c.bmp.heightValid = false; BarometricAltitude_Update(&c);
     assert(!c.navigation.altitudeValid && c.navigation.groundPressurePa == 0);
-    writesLeft = -1;
-    /* Legacy mid-flight record without a reference must not auto-zero in air. */
+    /* Old pressure-only mission records cannot stand in for the calibration pair. */
     memset(flash, 0xff, sizeof(flash)); (void)MissionStore_Load(&ignored);
-    assert(MissionStore_Save(1)); c = (Cansat){0};
-    assert(StateMachine_Init(&c));
+    assert(MissionStore_Save(1U | (101325U << MISSION_PRESSURE_SHIFT)));
+    c = (Cansat){0}; assert(StateMachine_Init(&c));
+    assert(c.missionState == CANSAT_STATE_ASCENT && c.navigation.groundPressurePa == 0);
     c.bmp = (BMP280Data){.pressure=95461, .valid=true, .timestamp_ms=tick};
     BarometricAltitude_Update(&c); assert(!c.navigation.altitudeValid);
-    /* Explicit launch-pad recalibration replaces an already persisted reference. */
-    memset(flash, 0xff, sizeof(flash)); c = (Cansat){0};
-    assert(StateMachine_Init(&c));
-    assert(StateMachine_SetGroundPressure(&c, 100000));
-    assert(!StateMachine_SetGroundPressure(&c, 101000));
-    assert(StateMachine_RecalibrateGroundPressure(&c, 101234.4f));
-    assert(c.navigation.groundPressurePa == 101234 && !c.navigation.altitudeValid);
-    c = (Cansat){0}; assert(StateMachine_Init(&c));
-    assert(c.navigation.groundPressurePa == 101234);
-    c.missionState = CANSAT_STATE_ASCENT;
-    assert(!StateMachine_RecalibrateGroundPressure(&c, 100000));
-    c.missionState = CANSAT_STATE_LAUNCH_PAD;
-    assert(!StateMachine_RecalibrateGroundPressure(&c, NAN));
-    writesLeft = 0;
-    assert(!StateMachine_RecalibrateGroundPressure(&c, 100000));
-    assert(c.navigation.groundPressurePa == 101234 && !StateMachine_GetStatus()->persistenceOK);
-    writesLeft = -1;
     /* Nonempty flash with no committed record is not a fresh launch. */
     memset(flash, 0xff, sizeof(flash)); flash[0] = 0;
     assert(!StateMachine_Init(&c) && c.missionState == CANSAT_STATE_UNINITIALIZED);

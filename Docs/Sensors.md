@@ -25,6 +25,12 @@ coefficient reads, and (BMI270) the configuration upload happen here. Do not
 call it every main-loop pass. Reinitialization resets user calibration to its
 defaults, so reapply your saved coefficients afterward.
 
+`BMP280_Init` does not sample launch pressure. Call `BMP280_CalibrateGroundPressure`
+explicitly on the ground (settle 1 s, average 16 samples, about 2.7 s), or restore
+it through `BMP280_SetGroundPressure` without reading/calibrating. Relative height
+remains invalid until one of these succeeds. Flight acquisition restores saved
+ground pressure and gyro biases after initialization; see [Calibration.md](Calibration.md).
+
 BMI270 uploads the full 8192-byte image in 32-byte chunks. At 100 kHz, the image
 upload alone is approximately 0.92 seconds including address/register overhead;
 initialization also includes hardware startup waits and HAL overhead. This is
@@ -171,13 +177,20 @@ static const BMI270Calibration imu_cal = {
     .accel = SENSOR_CALIBRATION_3D_IDENTITY,
     .gyro_bias_dps = {0, 0, 0}
 };
-static const SensorCalibration3D mag_cal = SENSOR_CALIBRATION_3D_IDENTITY;
+static const SensorCalibration3D mag_cal = IIS2MDC_DEFAULT_CALIBRATION;
 
 bool accel_cal_ok = BMI270_SetCalibration(&imu, &imu_cal);
 bool mag_cal_ok = IIS2MDC_SetCalibration(&mag, &mag_cal);
 ```
 
-Replace the identity initializers with the coefficients measured for your board.
+IIS2MDC_Init automatically loads IIS2MDC_DEFAULT_CALIBRATION from IIS2MDC.h:
+hard-iron bias `{-5.84, 3.08, 11.92}` in microtesla, and soft-iron matrix
+`{{1.001, 0.012, 0.009}, {0.012, 1.006, -0.001}, {0.009, -0.001, 0.994}}`,
+with factor 1. These values are compiled into firmware and survive power cycles;
+no application setter call is needed. IIS2MDC_SetCalibration can override them
+in RAM, but the next driver initialization restores the compiled defaults.
+The offsets are assumed to be in microtesla and in sensor X/Y/Z order, as used
+by this driver. Replace the accelerometer identity with its measured coefficients.
 The transformation is `output = factor * matrix * (input - bias)`. For accel,
 `bias` is in **m/s²**; for mag, hard-iron `bias` is in **µT**. Both matrices and
 the factor are dimensionless. The magnetometer matrix accepts all nine elements
