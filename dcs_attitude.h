@@ -51,6 +51,27 @@ typedef struct {
     bool mag_correction_allowed;
 } DcsAttitudeSample;
 
+/*
+ * Calibrated values in the installed sensors' native axes. Magnetometer
+ * offset/matrix calibration must already have been applied in IIS2MDC axes.
+ * Set correct_bmi_to_body_origin only when the physical-Body origin is the
+ * intended cylinder-axis reference. body_alpha_z uses the payload/Body +Z
+ * sign; it is ignored when correction is disabled.
+ */
+typedef struct {
+    uint32_t system_time_ms;
+    DcsVec3 gyro_bmi_rad_s;
+    DcsVec3 accel_bmi_mps2;
+    DcsVec3 mag_iis2mdc_calibrated;
+    bool gyro_valid;
+    bool accel_valid;
+    bool mag_valid;
+    bool accel_correction_allowed;
+    bool mag_correction_allowed;
+    bool correct_bmi_to_body_origin;
+    float body_alpha_z_rad_s2;
+} DcsInstalledAttitudeSample;
+
 typedef struct {
     /* Persistent private engine state. Uses magnetic NED internally. */
     FusionAhrs fusion;
@@ -77,8 +98,9 @@ typedef struct {
 /*
  * Flight software owns sensor calibration and supplies calibrated vectors
  * and their validity. This interface requires the right-handed payload body
- * frame: +X forward, +Y right, +Z down. Confirm axis mapping at integration;
- * this module performs no sensor-to-body conversion. Units are rad/s for
+ * frame: +X parafoil front, +Y right, +Z down. The installed BMI270 and
+ * IIS2MDC mappings are implemented by dcs_sensor_transform; this module itself
+ * performs no sensor-to-payload conversion. Units are rad/s for
  * gyro, m/s^2 for accelerometer specific force (including gravity at rest),
  * and the same units as calibrated_mag_strength for magnetometer.
  * The caller may disable accelerometer correction during deployment, turns,
@@ -108,5 +130,11 @@ bool dcs_attitude_init(DcsAttitudeState *state,
 bool dcs_attitude_update(DcsAttitudeState *state,
                          const DcsAttitudeConfig *config,
                          const DcsAttitudeSample *sample);
+
+/* Installed-hardware entry point; maps native axes before running Fusion. */
+bool dcs_attitude_update_installed(
+    DcsAttitudeState *state,
+    const DcsAttitudeConfig *config,
+    const DcsInstalledAttitudeSample *sample);
 
 #endif

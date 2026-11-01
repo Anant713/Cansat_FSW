@@ -8,29 +8,64 @@ magnetometer data.
 These modules have no MCU or driver
 dependencies and use caller-owned, fixed-size state.
 
-This is a development checkpoint, not complete flight firmware. Fusion is
-integrated into the portable attitude module. Desktop checks establish software
-behavior, not flight accuracy. Hardware bench and drone-drop testing have not
-been performed here.
+[SENSOR_AXIS_CONVENTIONS.md](SENSOR_AXIS_CONVENTIONS.md) records the installed
+physical-Body, BMI270, IIS2MDC and payload frames. `dcs_sensor_transform` maps
+calibrated native sensor vectors into the payload frame and provides the
+optional BMI-to-cylinder-axis rotational acceleration correction.
+
+This repository is the portable DCS flight core. Fusion is integrated into the
+attitude module. Desktop checks establish software behavior, not aerodynamic
+accuracy; the frozen flight parameters remain assumptions accepted because no
+further identification time is available.
 
 [FLIGHT_TEST_VALIDATION.md](FLIGHT_TEST_VALIDATION.md) is the separate register
 of assumptions, required drone-drop data, identification tasks, and validation
 limits. Update it as new design assumptions are introduced and link results to
 specific runs; approved design choices are not automatically flight-validated.
 
+[Test2_3010 damaged-drop analysis](Flight_Data/Analysis_Test2_3010/REPORT.md)
+records raw-log integrity, flight phases, offline calibration candidates,
+GNSS/barometer disagreement and velocity-circle fits. It supplies no validated
+healthy trim or control settings. Reproduce derived data/plots with
+`python tools/analyze_flight_data.py` (NumPy, pandas, SciPy and Matplotlib).
+
 Architecture, algorithms, interfaces, thresholds, and recovery behavior must
 be discussed with the project owner before implementation. Routine drivers
 and low-level implementation can proceed within the agreed design.
 
-[dcs_config.h](dcs_config.h) collects explicitly labelled simulation-only dummy
-planning/guidance parameters and the agreed initial numerical test settings.
-Dummy values are arbitrary and must not be treated as flight defaults. Existing
-modules still receive their caller-owned configuration; the header does not
-enable or implement planning/guidance.
+[dcs_config.h](dcs_config.h) is the frozen flight-value register, including the
+target at 26.717535 N, 84.301543 E. [dcs_flight_config.h](dcs_flight_config.h)
+and dcs_flight_config.c assemble those constants into one `DcsFlightConfig` for
+the main FSW. They were promoted from unvalidated placeholders by programme
+decision and must be archived with the flight log.
 
-[dcs_planner.h](dcs_planner.h) declares the planner input/configuration, fixed
-four-segment output and result codes. It is an interface only; the generation
-function has no implementation yet.
+[dcs_planner.h](dcs_planner.h) and dcs_planner.c implement bounded six-family
+candidate planning: select final course, connect to the energy point, append
+the combined straight through final entry to target, evaluate wind/time/height,
+and rank candidates. Outputs contain four segments and path-distance markers
+for both energy management and final entry. It also supports a post-energy
+connection directly to the final-approach entry.
+
+The agreed runtime uses one persistent guidance state and one bounded update
+for path progress, direct energy/final-entry/target decisions, reassessment and
+LOS guidance. No event queue, acknowledgment interface or obsolete-plan event
+history is required. Marker handling is internal; logging does not gate control.
+This is implemented by dcs_guidance.h/.c. It includes full/partial tangent
+loiter, reconnection to qA, direct-target fallback, final-line continuation,
+wind/height/path reassessment and flare latching; see GUIDANCE_DESIGN.md.
+
+[CIRCLE_WIND_ESTIMATION_DESIGN.md](CIRCLE_WIND_ESTIMATION_DESIGN.md) records the
+requested GPS velocity-circle method for wind/airspeed identification, primary
+references, and why the damaged circling drop does not establish healthy trim
+speed. dcs_circle_fit.h/.c implements the bounded velocity-circle fit, and
+dcs_runtime.h/.c commands the configurable identification turn followed by a
+settled trim-speed sampling stage. The damaged flight still supplies no healthy
+flight value.
+
+dcs_control.h/.c implements the configurable heading-error/rate-feedback
+controller, single-sided brake allocation, symmetric flare allocation and
+independent calibrated left/right servo pulse mapping. Hardware PWM generation
+remains in the main FSW driver.
 
 [dcs_dubins.h](dcs_dubins.h) and dcs_dubins.c implement the six Dubins geometry
 families in North/East coordinates, returning straight/arc segments and length/
@@ -57,7 +92,8 @@ The project owner agreed to retain this wind model for V1 with configurable
 airspeed, gate thresholds, and EMA strength. `last_update_ms` records the GNSS
 measurement timestamp of the last accepted wind update. Rejected samples leave
 it unchanged. Check `has_estimate` before computing its age; a timestamp of zero
-can be valid. Expiry and guidance fallback behavior remain to be agreed.
+can be valid. Retain accepted wind without expiry; age alone does not request
+reassessment. Before any estimate exists, planning explicitly assumes zero wind.
 
 `dcs_attitude_update` accepts calibrated gyro, accelerometer, and magnetometer
 vectors from flight software, which owns calibration. The interface requires
@@ -131,6 +167,8 @@ gcc -std=c11 -Wall -Wextra -Werror -pedantic -I. dcs_wind.c tests/test_dcs_wind.
 ./dcs_wind_test
 gcc -std=c11 -Wall -Wextra -Werror -pedantic -I. dcs_dubins.c tests/test_dcs_dubins.c -lm -o dcs_dubins_test
 ./dcs_dubins_test
+gcc -std=c11 -Wall -Wextra -Werror -pedantic -I. dcs_planner.c dcs_dubins.c tests/test_dcs_planner.c -lm -o dcs_planner_test
+./dcs_planner_test
 ```
 
 The flight-software integration supplies monotonic millisecond timestamps,
@@ -141,12 +179,15 @@ MIT license under third_party/Fusion. This uses upstream's standard square-root
 option without changing upstream sources. No additional loop or scheduler is
 required: keep one DcsAttitudeState and update it for each new gyro sample.
 
-Hardware bench testing is deferred for now. The wind model and full guidance
-phase sequence are agreed. [GUIDANCE_DESIGN.md](GUIDANCE_DESIGN.md) records the
-sequence and pending transition, wind-fallback, and planning decisions.
-Guidance, control, brake
-allocation, and servo integration remain work
-to do; none of these modules drives servos.
+Hardware bench calibration remains required. The wind model and full guidance
+phase sequence are implemented. [GUIDANCE_DESIGN.md](GUIDANCE_DESIGN.md) records
+the runtime, fallbacks and parameters that still need physical calibration.
+The main FSW calls dcs_runtime_start when its own mission state enters secondary
+descent, then calls dcs_runtime_update from the cooperative super-loop. The DCS
+runtime does not infer deployment or duplicate the mission state machine. It
+returns pulse widths but does not access PWM hardware.
+See [DCS_RUNTIME_INTEGRATION.md](DCS_RUNTIME_INTEGRATION.md) for the exact call
+boundary, input/output wiring and mandatory pre-flight calibration values.
 
 The main FSW is evolving. Its integration model is one-time initialization,
 bounded updates called from a cooperative super-loop, persistent module state,

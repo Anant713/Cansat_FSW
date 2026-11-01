@@ -57,9 +57,7 @@ void dcs_nav_step(DcsNavState *state, const DcsNavConfig *config,
     state->last_step_ms = now_ms;
     state->has_step_time = true;
 
-    if (state->has_gnss && step_ms <= config->max_gnss_age_ms &&
-        now_ms - state->last_gnss_system_time_ms <=
-            config->max_gnss_age_ms) {
+    if (state->has_gnss) {
         float dt_s = (float)step_ms * 0.001f;
         state->output.north_m += state->output.ground_v_north_mps * dt_s;
         state->output.east_m += state->output.ground_v_east_mps * dt_s;
@@ -104,10 +102,13 @@ void dcs_nav_step(DcsNavState *state, const DcsNavConfig *config,
         state->has_baro = true;
     }
 
-    state->output.horizontal_valid =
-        state->has_gnss &&
-        now_ms - state->last_gnss_system_time_ms <=
-            config->max_gnss_age_ms;
+    state->output.horizontal_valid = state->has_gnss;
+    state->output.gnss_age_ms = state->has_gnss
+        ? now_ms - state->last_gnss_system_time_ms : 0u;
+    state->output.gnss_fresh = state->has_gnss &&
+        state->output.gnss_age_ms <= config->max_gnss_age_ms;
+    state->output.horizontal_propagated = state->has_gnss &&
+        !state->output.gnss_fresh;
     state->output.vertical_valid =
         state->has_baro &&
         now_ms - state->last_baro_system_time_ms <=

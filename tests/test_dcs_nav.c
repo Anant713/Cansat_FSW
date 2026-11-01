@@ -63,7 +63,10 @@ int main(void)
     assert(state.output.horizontal_valid);
     assert(!state.output.vertical_valid);
     dcs_nav_step(&state, &config, 3600U, NULL, NULL);
-    assert(!state.output.horizontal_valid);
+    assert(state.output.horizontal_valid);
+    assert(!state.output.gnss_fresh);
+    assert(state.output.horizontal_propagated);
+    assert(near(state.output.north_m, 107.75f, 1.0f));
 
     puts("dcs_nav tests passed");
     return 0;

@@ -86,7 +86,7 @@ All times below are seconds since the last boot. These are descriptive analysis 
 | 168-181.65 s | Dense damaged-descent data | Approximately -4.435 m/s |
 | 183.005, 183.129, 187.821 s | Sparse tail | Last logged relative height 1.974 m |
 
-The height maximum is **93.013 m at 155.715 s**. It occurs during top-hover variation, not necessarily at release. At 166.269 s the sample is still near 1 g and 92.902 m. At 166.384 s its force norm drops to about 0.34 g. The minimum is **0.0474 g at 166.933 s**, and the peak is **3.406 g at 167.672 s**. There is roughly 1.29 s between first low-force observation and peak load.
+The logged pressure-derived height maximum is **93.013 m at 155.715 s**. The owner subsequently confirmed an independently known drone maximum of **100 m**, so the logger under-reports that known maximum by about 7 m in this run. It occurs during top-hover variation, not necessarily at release. At 166.269 s the sample is still near 1 g and 92.902 m. At 166.384 s its force norm drops to about 0.34 g. The minimum is **0.0474 g at 166.933 s**, and the peak is **3.406 g at 167.672 s**. There is roughly 1.29 s between first low-force observation and peak load.
 
 ![Deployment transient](figures/02_release_transient.png)
 
@@ -130,7 +130,7 @@ Median pressure in selected ground blocks is **100836.3 Pa**. Using the same sta
 
 Selected ground-block height SD is about **0.104 m**. Hover residuals include actual drone motion and pressure-port effects. Good repeatability does not by itself calibrate absolute height, temperature-dependent conversion or sensor lag. Chip temperature around 32 C is not an independently measured atmospheric temperature profile.
 
-Temperature sensitivity is much smaller than the GNSS discrepancy: an isothermal hypsometric calculation for the same pressure change gives about 93.1 m at mean air temperature 288.15 K and 98.0 m at 303.15 K. These are conditional examples, not a correction applied using chip temperature. A warmer atmosphere could help explain a nominal 100 m drone drop reading around 93 m; it cannot explain the roughly 52 m difference between the pressure and GNSS relative-height maxima.
+Temperature sensitivity is much smaller than the GNSS discrepancy: an isothermal hypsometric calculation for the same pressure change gives about 93.1 m at mean air temperature 288.15 K and 98.0 m at 303.15 K. These are conditional examples, not a correction applied using chip temperature. A warmer atmosphere could help explain the independently confirmed 100 m drone height reading around 93 m; it cannot explain the roughly 52 m difference between the pressure and GNSS relative-height maxima.
 
 ### Magnetometer: other-PCB calibration versus diagnostic flight fit
 

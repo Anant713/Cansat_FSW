@@ -35,6 +35,10 @@ typedef struct {
     float ground_v_east_mps;
     bool horizontal_valid;
     bool vertical_valid;
+    /* Measurement freshness is separate from propagated-state availability. */
+    bool gnss_fresh;
+    bool horizontal_propagated;
+    uint32_t gnss_age_ms;
 } DcsNavOutput;
 
 typedef struct {
@@ -62,7 +66,10 @@ bool dcs_nav_init(DcsNavState *state, const DcsNavConfig *config);
  * The
  * barometer provider supplies height relative to target ground level, not
  * height relative to the launch pad. Timestamps share one monotonic clock.
- * Horizontal velocity is held only while the last GNSS fix remains fresh.
+ * After the first accepted fix, horizontal position continues with held GNSS
+ * velocity when fixes are unavailable. gnss_fresh distinguishes a measurement-
+ * supported state from this simple propagation. Propagation is deliberately
+ * not fed back into measurement-only wind or circle identification.
  * Vertical position is corrected by barometer; it is not inertially propagated.
  */
 void dcs_nav_step(DcsNavState *state, const DcsNavConfig *config,

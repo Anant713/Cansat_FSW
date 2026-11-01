@@ -1,11 +1,15 @@
 # Drone-drop validation register
 
-Created: 2026-10-27. Planned campaign: drone drops from approximately 100 m.
+Created: 2026-10-27. Current integration target: final mission launch near
+1000 m, primary descent, and secondary parafoil/DCS operation from about 600 m.
 
 This is the separate record of assumptions to check using collected data. Add
 new assumptions here as design discussions continue. Design approval and host
-test success do not constitute flight validation. No drop results are recorded
-yet; all entries below remain open.
+test success do not constitute flight validation. On 2026-11-01 the owner
+reported a drop with a broken servo mount, substantial unintended brake-line
+pull and continuous small circles. The subsequently supplied Test2_3010 raw
+logs have now been analyzed; see the linked result below. This is mechanical-
+failure evidence, not healthy-flight validation. All entries below remain open.
 
 Related documents:
 
@@ -13,6 +17,7 @@ Related documents:
 - [Fusion application behavior](ATTITUDE_FUSION_DESIGN.md)
 - [Bench procedures](ATTITUDE_BENCH_TESTS.md)
 - [Overall architecture](ARCHITECTURE.md)
+- [Circle-based identification research](CIRCLE_WIND_ESTIMATION_DESIGN.md)
 
 ## Status and evidence rules
 
@@ -28,6 +33,38 @@ Related documents:
   with the project owner before implementation.
 
 ## Minimum useful dataset
+
+### Analyzed run: Test2_3010, damaged mount
+
+See [detailed analysis](Flight_Data/Analysis_Test2_3010/REPORT.md) and its source
+hashes, rejection audit, offline calibration candidates, sensitivity checks and
+plots. The analysis does not change flight code or approve flight parameters.
+
+- A01/A02: CDR BMI270/IIS2MDC models and logger-raw units are recorded. Gyro
+  zero-rate candidates are estimated from quiet blocks; absolute axis/heading
+  and payload/canopy relationship remain unverified. Representative full accel
+  affine calibration is not identifiable from the available poses.
+- A03: 84.6% of dense damaged-descent samples pass the 0.8-1.2 g magnitude band.
+  This is not evidence that every passing vector is a valid gravity reference.
+- N01/I01: accepted GNSS and sensor cadence/gaps are quantified. A 2 s constant-
+  velocity prediction has about 9.27 m 95th-percentile disagreement with later
+  positions from the same receiver; this is not independent position truth.
+- N03: ground pressure-height scatter is about 0.10 m, but the pressure/GNSS
+  relative-height maxima are about 93 m versus 41 m with different timing. The
+  owner independently confirmed that the drone reached 100 m; that supports a
+  roughly 7 m pressure-height shortfall in this run but does not explain the GNSS
+  timing/amplitude discrepancy or identify one correction model.
+- W01-W04: velocity-circle fits provide provisional wind near 4.5 m/s, while
+  maneuver radii vary substantially between windows. No healthy trim is inferred.
+- V01-V05: about 4.43 m/s damaged-descent sink and large body rates are observed;
+  healthy sink, turn loss, radius, actuator mapping and gains remain open.
+- G08: no settled touchdown/impact record or known flare actuation exists.
+
+290/3327 GNSS rows are quarantined, including five malformed-coordinate rows
+that pass reconstructed checksums. This supports schema/range/continuity checks
+in addition to checksums, without establishing the original corruption cause.
+The supplied different-PCB mag calibration fails direct norm comparison;
+an offline hard-iron candidate improves consistency but validates no true yaw.
 
 Log source measurements and estimator inputs, not only final telemetry outputs.
 Rates and the telemetry/logging format remain integration decisions with the FSW
@@ -86,29 +123,94 @@ the manoeuvres actually observed; this document is not a flight-command script.
 
 ## Glide, turns and actuators
 
+### Requested circle identification and reported damaged drop
+
+Extend W01-W04/V01-V05 evidence to the GPS velocity-circle method described in
+CIRCLE_WIND_ESTIMATION_DESIGN.md. Preserve fresh GNSS North/East velocity and
+measurement/receive times, quality, pressure/height, attitude, commanded and
+actual brake configuration where observable, and failure timing/video. Do not
+fit propagated or duplicated velocities as independent observations.
+
+The bounded onboard fit now checks unique fresh GNSS epochs, direction coverage,
+velocity spread, radius bounds and radial RMS. Continue inspecting conditioning,
+sensitivity and agreement across consecutive windows offline. A visually
+circling payload is not itself evidence of a valid velocity circle. Host tests
+cover ideal circles and degenerate line data; noisy, sparse and changing-speed
+replay remains required. A small residual does not establish independent wind
+truth or healthy trim equivalence.
+
+To identify healthy horizontal trim speed, the proposed additional evidence is
+a settled, normal brake-setting leg after wind identification, using |Vground-W|.
+Wind must remain representative between stages. The damaged flight alone cannot
+establish healthy trim, sink/turn settings or command-to-brake response; the
+broken mount means actual line pull differed from commanded actuation. No such
+healthy trim leg is established here. The runtime now uses configurable
+settling, height and timeout limits and a flagged fallback when identification
+fails. Their numerical flight values remain unvalidated.
+
 | ID | Assumption or setting | Evidence and analysis needed | Decision informed |
 | --- | --- | --- | --- |
 | V01 | Working model: nominal straight-glide sink rate V_D can be treated as constant. | Measured height loss divided by elapsed time over settled straight intervals; report spread and dependence on load, wind, speed and brake state. Cross-check barometric transients before interpreting variation as sink change. | V_D input and prediction uncertainty. Earlier preference for descent below 20 m/s is not a measured result or a flare-performance specification. |
 | V02 | Initial setting: turns consume 20% more height per unit time than straight glide. | Compare comparable settled straight and turning intervals, including left/right turns and brake demand. Estimate m_turn = sink_turn / sink_straight - 1; also compare predicted versus observed cumulative height loss. Separate deployment and flare. | Retain, increase or reduce 0.20; assess whether one percentage covers turn radius/brake variation. The percentage is not yet flight-validated. |
 | V03 | Baseline: a conservative fixed planning radius covers real turn capability and transient response. | GNSS ground-track curvature, airspeed/wind information, commands, and canopy/payload response through turn entry/exit. Measure both directions and lag. Ground-path radius in wind is not obtained directly from payload gyro Z. | Minimum sustainable radius, R_plan, loiter radius and whether curvature transitions need larger margins. |
-| V04 | Planned control model: heading/brake response can be represented simply with bounded commands and rate limits. | Time-aligned desired heading, payload/canopy motion, heading rate, requested/applied brakes and saturation. Observe delays, overshoot, asymmetric response and command reversals. | Controller gains, actuator mapping, command-rate limits and whether single-sided steering is adequate. Controller implementation/parameters are still pending. |
+| V04 | Implemented control model: heading/brake response can be represented simply with bounded commands and rate limits. | Time-aligned desired heading, payload/canopy motion, heading rate, requested/applied brakes and saturation. Observe delays, overshoot, asymmetric response and command reversals. | Controller gains, actuator mapping, command-rate limits and whether single-sided steering is adequate. |
 | V05 | Baseline approximation: steering-induced airspeed changes and turn-entry/exit sink transients are adequately covered by the simple model and margin. | Speed/height-loss histories around commands, not only steady portions. Compare predicted integrated loss with actual loss for whole manoeuvres. | Whether constant airspeed plus the turn multiplier is sufficient; changes require discussion rather than silently adding a more complex model. |
 
 ## Planning, guidance and terminal assumptions
 
-These components are not yet implemented. Relevant logs/validation become
-available as they are integrated; unavailable observations stay open.
+These components are implemented and host-tested. Their physical behavior and
+parameters remain open until simulation, bench calibration and flight evidence.
 
 | ID | Assumption or setting | Evidence and analysis needed | Decision informed |
 | --- | --- | --- | --- |
 | G01 | Baseline: wind-aware path timing and straight/turn sink accounting predict remaining height usefully. | At each plan/replan and energy check, save remaining segment geometry, wind, time/height prediction and measured subsequent consumption. Compare cumulative prediction error by segment type. | Height classification and feasibility model. Include 20% turn loss consistently in loiter, reconnection and final-path budgets. |
-| G02 | Baseline: the remaining-route budget includes a separate height reserve; height-classification tolerance remains to be finalized. | Distribution of height-prediction errors, sensing delay, turn/reconnection transients and remaining approach consumption. Test decisions in replay. | Owner-suggested ranges are 10-20 m reserve and 1.5-2% classification tolerance; exact values and percentage basis are unset. Keep the metre-based Y reassessment threshold distinct. Avoid treating the turn-loss allowance as the same reserve twice. |
+| G02 | Baseline: the remaining-route budget includes a separate reserve; percentage classification tolerance applies to predicted remaining loss excluding reserve. | Distribution of height-prediction errors, sensing delay, turn/reconnection transients and remaining approach consumption. Test decisions in replay. | Owner-suggested ranges are 10-20 m reserve and 1.5-2% tolerance; exact flight values are unset. Keep the metre-based Y reassessment threshold distinct. Avoid treating the turn-loss allowance as the same reserve twice. |
 | G03 | Baseline: LOS over lines/arcs is trackable with a suitable look-ahead distance. | Active geometry, reference/LOS points, cross-track error, desired course/heading, actual trajectory, brake state and response lag. Measure arc cutting, segment transitions and sustained error. | Look-ahead, radius margin and replan thresholds; a planned arc does not guarantee the flown radius. |
 | G04 | Baseline: end-plane and directed angular-progress rules identify segment/marker crossings reliably. | Timestamped progress, segment changes, GNSS gaps/jumps and video/trajectory evidence. Check +/-pi crossings and backtracking; use deterministic replay for cases not flown. | Progress tolerances, event persistence and handling of poor position data. No advancement should be inferred solely from heading rotation. |
-| G05 | Baseline: late loiter and exit/reconnection preserve enough height for final approach. | Predicted/actual full and partial orbit loss, exit configuration, replacement-path cost, reserve and subsequent approach. Reevaluate exit/reconnection cost when its geometry changes. | Loiter entry/exit logic, radius, energy-point placement and reserve. A 100 m drop may not provide enough height to observe these manoeuvres. |
+| G05 | Baseline: late loiter and exit/reconnection preserve enough height for final approach. | Predicted/actual full and partial orbit loss, exit configuration, replacement-path cost, reserve and subsequent approach. Reevaluate exit/reconnection cost when its geometry changes. | Loiter entry/exit logic, radius, energy-point placement and reserve over the final 600 m parafoil phase. |
 | G06 | Baseline: final entry distance and into-wind/fallback bearing allow a useful stabilized final approach. | Final course/heading, wind state, entry position/height, tracking error, touchdown position and independently observed landing reference where possible. | Final length, energy-point distance and weak-wind fallback suitability. Four-slot geometry is a software property; actual trackability needs flight evidence. |
 | G07 | Baseline: target-overrun replanning can identify a feasible return from current remaining height. | Save overrun event, candidate costs, feasibility outcome and actual height consumption if a return occurs. Use replay/simulation when not observed; distinguish from the low-height continue-final fallback. | Return feasibility/reserve and replan scheduling. Do not mark it verified without observing or separately testing the relevant conditions. |
 | G08 | Planned terminal flare has an appropriate trigger, brake level and response. | Trigger-height source/delay, commanded/applied symmetric brakes, sink/ground speed, video and touchdown outcome. | Flare authority, trigger and demand. Values remain undecided; crossing the horizontal target alone is not a flare trigger. |
+
+### Near-target and short-connection scenarios
+
+Extend G01/G05/G06 software and simulation coverage to initial high-altitude
+starts near the target, short connections with an upstream energy marker before
+path start, and initial exact-target starts with weak/no wind and no override.
+The approved construction generates a Dubins connection to qE, arriving along
+the final course, then a straight through qA to target, rather than clamping an
+upstream marker to the start. Proximity alone must not shorten final approach.
+Validate its full wind/height budget including qE-to-qA against flight evidence.
+At the exact target, after override/strong-wind handling, use any nonzero wind
+direction even if weak; otherwise use usable GNSS ground course. Test the
+sensitivity to weak-wind direction noise and GNSS course uncertainty. This is
+distinct from existing final-line overrun. Candidate-planner host tests now
+exercise these software cases; no corresponding flight behavior is validated.
+
+For bounded arc-time integration, check numerical convergence against a finer
+offline reference, including near wind-feasibility boundaries. Verify numerical
+ranking ties independently of physical tolerance. Sample count and equality
+tolerances are frozen flight assumptions: 32 Simpson intervals per
+arc, 1e-5 rad turn equality, and 0.001 m length equality. Selected host-test
+routes through wind/airspeed ratio 0.999 agree within 0.2% in time/loss with an
+8192-midpoint-per-arc double reference. Analytical straight times and ranking
+priorities are also checked. This does not bound all possible routes, establish
+STM32 execution time, or validate the physical airspeed/sink/wind model. Broader
+simulation and G01 flight-prediction validation remain open.
+
+### Direct marker handling in one guidance update
+
+The agreed simplified runtime supersedes event queues, external acknowledgment
+and old-plan notification handoffs. Extend G04 host/replay coverage when guidance
+is implemented: detected energy/final-entry/target crossings must directly
+invoke the corresponding decision/transition, recorded in persistent mode and
+progress. Test coincident markers, repeated calls without repeated handling,
+invalid position, failed replacement preserving the route, and successful
+replacement taking effect immediately without old markers acting on it.
+Verify energy decisions precede later approach transitions. Logging may record
+transitions but must not gate guidance. Position sampling still limits detection;
+no arbitrary-GNSS-gap or power-loss guarantee is implied. No runtime marker
+handling implementation has been tested yet.
 
 ### Wind reassessment threshold
 
@@ -126,17 +228,18 @@ Record age and rejected-update intervals to assess errors from retaining old
 wind. The first accepted estimate requests reassessment of the initial zero-wind
 plan. This is not validated.
 
-The common dcs_config.h header contains explicitly named DCS_SIM_DUMMY_*
-placeholders for future simulation; none establishes a measured flight value.
-Record replaced values and their supporting evidence with each run. The
-DCS_TEST_* constants record agreed initial test settings, not flight validation.
+The common dcs_config.h header contains frozen DCS_FLIGHT_* values. Many were
+formerly arbitrary simulation values and remain unvalidated physical
+assumptions, but are accepted for this flight by programme decision. Record the
+full configuration and Git revision with each run. Acceptance for flight does
+not constitute validation.
 
 ### Path reassessment thresholds
 
 The agreed trigger structure requests reassessment when shortest horizontal
 distance to the active path exceeds X metres or remaining-height shortage
 exceeds Y metres. Current-path feasibility is checked before replacement.
-X/Y values are unset. Approved configurable initial test settings are separate
+The frozen X/Y values are 10 m and 5 m. The implementation uses separate
 1-second continuous persistence timers for horizontal error and height shortage,
 each reset when its condition clears, and at least 2 seconds between ordinary
 reassessments. Target passage requests immediate reassessment once per plan,

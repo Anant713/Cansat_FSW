@@ -16,14 +16,13 @@ The current CAN-7USAT flight-software architecture uses a cooperative super-loop
 ---
 
 ## 2. Architecture Status
-
 FLIGHT_TEST_VALIDATION.md separately tracks assumptions requiring drone-drop,
 bench, or replay evidence. Maintain it as the design evolves. An architectural
 decision or a host test does not close its flight-validation entry.
 
-Current checkpoint: portable navigation, wind, and a Fusion attitude
-estimator exist with desktop tests. Fusion replaces the provisional custom
-attitude filter. Hardware bench and drop-test results are pending. The
+Current checkpoint: portable navigation, wind, Fusion attitude, planning,
+guidance/loiter, circle identification, heading control and servo mapping exist
+with desktop tests. Hardware bench and representative drop-test results are pending. The
 application proposal and test procedure are in ATTITUDE_FUSION_DESIGN.md and
 ATTITUDE_BENCH_TESTS.md.
 
@@ -886,12 +885,55 @@ weak. Use a separate 1-second persistence timer and the ordinary 2-second
 interval. Compare against wind at the last completed assessment (initially
 plan generation), refreshing that reference even when the path is retained.
 The first accepted wind estimate requests reassessment. Off-path recovery-cost
-assessment remains pending. Physical configuration values are not selected:
-dcs_config.h holds explicitly labelled simulation-only dummy parameters, separate
-from the agreed initial numerical test settings. These do not alter estimator
-configuration or implement a planner.
+assessment remains pending. dcs_config.h now holds the frozen flight parameters,
+and dcs_flight_config assembles the navigation, attitude and runtime configuration
+used by the FSW. Many physical values remain unvalidated assumptions.
 dcs_dubins.h/.c now implements the six Dubins geometry families with fixed
 three-segment output and length/turn metrics. The planner interface selects
 final approach internally; insufficient height is a no-feasible-approach failure
-reason. Complete planner generation, guidance and reassessment remain
-unimplemented. See GUIDANCE_DESIGN.md for scope and host geometry validation.
+reason. dcs_planner_generate now selects final course, evaluates six routes to
+qE plus the combined target straight, predicts time/height, and ranks candidates.
+Guidance and reassessment are implemented in dcs_guidance.h/.c. See
+GUIDANCE_DESIGN.md for scope and host validation.
+
+The agreed height-tolerance percentage applies to predicted remaining loss,
+excluding reserve. Numerical turn/length equality tolerances are separate.
+Arc-time integration uses 32 Simpson intervals per arc, with numerical tie
+tolerances frozen in dcs_config.h. Starting near the target does not automatically shorten
+final approach. If the energy marker would precede the path start, adjust the
+route to reach a valid energy-management point instead of clamping the marker.
+The approved construction connects Dubins geometry to qE = -(final_length +
+energy_upstream) * final_course_unit_vector, arriving along that course, then
+continues straight through final entry to target. This replaces placing qE
+upstream along a previously generated Dubins route. The two collinear legs
+share one segment; planner output contains both energy and final-entry markers.
+At exactly the target without an override or strong wind, use the into-wind
+course for any nonzero estimate, otherwise current usable GNSS ground course.
+These selection policies are implemented by the planner, not the geometry-only
+layer. Guidance handles path progress and marker decisions internally.
+
+The owner approved one persistent guidance state and one bounded update for
+progress, direct marker decisions, modes, reassessment and LOS guidance. The
+planner remains a calculation helper; heading/brake control remains separate.
+This supersedes the proposed event queue/acknowledgment and old-plan handoffs.
+Handle detected crossings internally and remember handling through mode/progress.
+Valid replacements activate immediately and obsolete markers cease to apply;
+failed replacement preserves the current route. Logging does not gate control.
+See GUIDANCE_DESIGN.md; this runtime is implemented without an event queue.
+
+The main FSW mission state explicitly starts DCS when secondary descent begins;
+DCS does not infer deployment or duplicate that state machine. Once started,
+DCS owns its settling/identification/guidance sequence, flare and degraded-
+navigation actuator behavior. Navigation continues a held-velocity propagated
+state after GNSS becomes stale and reports freshness separately. This simple
+propagator cannot reproduce turning motion during a long outage.
+Use barometric measurements to correct available height. Controller feedback
+can come directly from attitude heading/rate; guidance supplies the reference
+(proposed wiring). Phase-aware replacements go to qE before energy management
+and qA after it; both planner modes are implemented.
+See CIRCLE_WIND_ESTIMATION_DESIGN.md for the requested identification research:
+GNSS velocity-circle centre estimates wind and radius estimates maneuver
+horizontal airspeed. Turning/damaged-flight speed is not automatically healthy
+trim. A subsequent settled trim leg estimates |Vground-W|. The bounded estimator
+and commanded sequence are implemented with configurable gates; their flight
+parameters remain unidentified.

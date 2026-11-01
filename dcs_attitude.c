@@ -1,5 +1,7 @@
 #include "dcs_attitude.h"
 
+#include "dcs_sensor_transform.h"
+
 #include <limits.h>
 #include <math.h>
 #include <stddef.h>
@@ -280,4 +282,39 @@ bool dcs_attitude_update(DcsAttitudeState *state,
         sample->system_time_ms - state->last_heading_reference_ms <=
             config->max_heading_reference_age_ms;
     return true;
+}
+
+bool dcs_attitude_update_installed(
+    DcsAttitudeState *state,
+    const DcsAttitudeConfig *config,
+    const DcsInstalledAttitudeSample *sample)
+{
+    DcsAttitudeSample payload_sample;
+    DcsVec3 payload_gyro;
+
+    if (sample == NULL ||
+        (sample->correct_bmi_to_body_origin &&
+         !isfinite(sample->body_alpha_z_rad_s2))) {
+        return false;
+    }
+
+    payload_gyro = dcs_bmi_vector_to_payload(sample->gyro_bmi_rad_s);
+    payload_sample = (DcsAttitudeSample){
+        .system_time_ms = sample->system_time_ms,
+        .gyro_rad_s = payload_gyro,
+        .accel_mps2 = sample->correct_bmi_to_body_origin
+            ? dcs_bmi_accel_to_body_origin_payload(
+                sample->accel_bmi_mps2,
+                payload_gyro.z,
+                sample->body_alpha_z_rad_s2)
+            : dcs_bmi_vector_to_payload(sample->accel_bmi_mps2),
+        .mag_calibrated =
+            dcs_mag_vector_to_payload(sample->mag_iis2mdc_calibrated),
+        .gyro_valid = sample->gyro_valid,
+        .accel_valid = sample->accel_valid,
+        .mag_valid = sample->mag_valid,
+        .accel_correction_allowed = sample->accel_correction_allowed,
+        .mag_correction_allowed = sample->mag_correction_allowed,
+    };
+    return dcs_attitude_update(state, config, &payload_sample);
 }

@@ -3,7 +3,7 @@
 #include <math.h>
 #include <stddef.h>
 
-static bool config_valid(const DcsWindConfig *config)
+bool dcs_wind_config_valid(const DcsWindConfig *config)
 {
     return config != NULL &&
            isfinite(config->horizontal_airspeed_mps) &&
@@ -25,11 +25,24 @@ static bool config_valid(const DcsWindConfig *config)
 
 bool dcs_wind_init(DcsWindState *state, const DcsWindConfig *config)
 {
-    if (state == NULL || !config_valid(config)) {
+    if (state == NULL || !dcs_wind_config_valid(config)) {
         return false;
     }
 
     *state = (DcsWindState){0};
+    return true;
+}
+
+bool dcs_wind_seed(DcsWindState *state, float north_mps, float east_mps,
+                   uint32_t measurement_time_ms)
+{
+    if (state == NULL || !isfinite(north_mps) || !isfinite(east_mps)) {
+        return false;
+    }
+    state->north_mps = north_mps;
+    state->east_mps = east_mps;
+    state->has_estimate = true;
+    state->last_update_ms = measurement_time_ms;
     return true;
 }
 
@@ -46,7 +59,7 @@ bool dcs_wind_update(DcsWindState *state, const DcsWindConfig *config,
     float ground_speed_mps;
     uint32_t interval_ms;
 
-    if (state == NULL || !config_valid(config) || fix == NULL ||
+    if (state == NULL || !dcs_wind_config_valid(config) || fix == NULL ||
         attitude == NULL || !fix->valid ||
         !isfinite(fix->ground_v_north_mps) ||
         !isfinite(fix->ground_v_east_mps)) {

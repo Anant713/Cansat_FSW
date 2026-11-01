@@ -1,9 +1,8 @@
 # Circle-based wind and airspeed identification
 
-Status: the owner requested this capability after insufficient healthy-flight
-test data and a reported servo-mount failure. The research method is included
-here for design discussion. No circle estimator, identification maneuver,
-automatic trim update or actuator command is implemented by this document.
+Status: the bounded velocity-circle estimator and runtime identification
+sequence are implemented in dcs_circle_fit.h/.c and dcs_runtime.h/.c. Physical
+commands, gates and timing remain configurable and require validation.
 
 ## Primary references
 
@@ -119,21 +118,22 @@ or commanded-brake response from this flight alone; actual brake displacement
 was no longer determined by the commanded servo value. Subsequent steady
 brakes-released data cannot be assumed to exist in that flight.
 
-## Decisions still required before operational integration
+## Implemented policy and remaining flight decisions
 
-- Initial maneuver authority, actuation, entry/settling condition and termination;
-  it cannot depend on already knowing the wind/trim speed it is estimating.
-- Available height/time budget and behavior when insufficient data or height
-  prevents identification; do not require a full circle regardless of descent.
-- Sample-window size, direction coverage, fit conditioning/residual checks,
-  and what constitutes a stable accepted wind/trim estimate.
-- Trim-release/settling definition and whether estimates are held for flight
-  or refreshed later. Keep flight values unset; numerical simulation settings
-  can be explicitly labelled dummy as previously agreed.
+- Main FSW explicitly starts DCS in secondary descent. After a configured canopy
+  settling time, DCS commands one configured single-sided identification input.
+- Invalid/insufficient barometric height or configured timeout limits abort
+  identification. Failure uses the
+  configured fallback airspeed/wind and raises a status flag.
+- The fixed-size fit requires unique fresh GNSS epochs, sample count, velocity
+  spread, angular coverage, radius bounds and radial-RMS acceptance.
+- After neutral settling, trim speed is averaged from |Vground-W| over fresh
+  GNSS samples. The accepted result seeds the existing straight-flight wind EMA.
+  Numerical flight settings remain to be selected.
 - GNSS-outage propagation and its interaction with the new estimates. Continue
   from a propagated state as requested, but do not feed propagated data back
   into this measurement-based identification as if they were fresh GNSS fixes.
 
 Record required data and eventual evidence in
-[FLIGHT_TEST_VALIDATION.md](FLIGHT_TEST_VALIDATION.md). A commanded identification
-circle is not implemented or flight-approved by finding this method.
+[FLIGHT_TEST_VALIDATION.md](FLIGHT_TEST_VALIDATION.md). Implementation and host
+tests do not make the manoeuvre flight-approved.

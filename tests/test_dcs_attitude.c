@@ -309,6 +309,34 @@ static void test_measured_intervals_and_heading_rate(void)
     close_to(state.payload_heading_rate_rad_s, 0.25f, 0.0001f);
 }
 
+static void test_installed_sensor_entry_point(void)
+{
+    DcsAttitudeConfig config = bench_config();
+    DcsAttitudeState state;
+    DcsInstalledAttitudeSample sample = {
+        .accel_bmi_mps2 = {0.0f, 0.0f, G},
+        /* Inverse of the installed mag mapping for payload (40, 0, 30). */
+        .mag_iis2mdc_calibrated = {34.641016f, -20.0f, -30.0f},
+        .gyro_valid = true,
+        .accel_valid = true,
+        .mag_valid = true,
+        .accel_correction_allowed = true,
+        .mag_correction_allowed = true,
+    };
+    assert(dcs_attitude_init(&state, &config, 0U));
+    for (int i = 0; i < 100; ++i) {
+        sample.system_time_ms += 10U;
+        assert(dcs_attitude_update_installed(&state, &config, &sample));
+    }
+    assert(state.accel_correction_used && state.mag_correction_used);
+    close_to(state.payload_heading_rad, 0.0f, 0.0001f);
+
+    sample.correct_bmi_to_body_origin = true;
+    sample.body_alpha_z_rad_s2 = NAN;
+    sample.system_time_ms += 10U;
+    assert(!dcs_attitude_update_installed(&state, &config, &sample));
+}
+
 int main(void)
 {
     test_known_pose_and_declination();
@@ -318,6 +346,7 @@ int main(void)
     test_angular_rejection_and_recovery();
     test_overrange_and_configuration();
     test_measured_intervals_and_heading_rate();
+    test_installed_sensor_entry_point();
     puts("dcs_attitude Fusion integration tests passed");
     return 0;
 }

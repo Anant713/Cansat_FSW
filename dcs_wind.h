@@ -43,8 +43,14 @@ typedef struct {
     float previous_course_rad;
 } DcsWindState;
 
+bool dcs_wind_config_valid(const DcsWindConfig *config);
+
 /* Returns false if any configuration field is outside its usable range. */
 bool dcs_wind_init(DcsWindState *state, const DcsWindConfig *config);
+
+/* Seed an independently identified wind, for example from a velocity-circle fit. */
+bool dcs_wind_seed(DcsWindState *state, float north_mps, float east_mps,
+                   uint32_t measurement_time_ms);
 
 /*
  * Call once per received GNSS solution. A valid first fix establishes the course
