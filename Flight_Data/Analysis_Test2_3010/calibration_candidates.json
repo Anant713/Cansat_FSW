@@ -1,0 +1,208 @@
+{
+  "scope": "Offline candidates for this raw log only; not automatically flight configuration",
+  "gyro": {
+    "per_session": [
+      {
+        "session": 0,
+        "n": 20,
+        "blocks_2s": 1,
+        "bias_dps": [
+          -0.08331250000000001,
+          0.035707499999999996,
+          -0.007629000000000001
+        ],
+        "sample_std_dps": [
+          0.11627027252212158,
+          0.09553516375907713,
+          0.08494322877508743
+        ],
+        "block_bootstrap_95_lo_dps": null,
+        "block_bootstrap_95_hi_dps": null,
+        "mean_accel_ms2": [
+          -0.4860079999999999,
+          -0.24371700000000002,
+          9.789730500000001
+        ],
+        "median_accel_norm_ms2": 9.803894965309011
+      },
+      {
+        "session": 1,
+        "n": 879,
+        "blocks_2s": 44,
+        "bias_dps": [
+          0.005325415244596133,
+          -0.04274146757679181,
+          -0.005147565415244596
+        ],
+        "sample_std_dps": [
+          0.07517756223791636,
+          0.0765601045779837,
+          0.08189532972484001
+        ],
+        "block_bootstrap_95_lo_dps": [
+          0.0002491476525119629,
+          -0.047918055965909104,
+          -0.011360854799641147
+        ],
+        "block_bootstrap_95_hi_dps": [
+          0.01051520442583732,
+          -0.03745409334629187,
+          0.0009892435556220094
+        ],
+        "mean_accel_ms2": [
+          0.9197193742889646,
+          0.23452321956769057,
+          9.765869226393628
+        ],
+        "median_accel_norm_ms2": 9.811726586009213
+      },
+      {
+        "session": 4,
+        "n": 59,
+        "blocks_2s": 3,
+        "bias_dps": [
+          0.020704915254237292,
+          -0.0294771186440678,
+          -0.01491067796610169
+        ],
+        "sample_std_dps": [
+          0.10424321751479816,
+          0.15844792309985667,
+          0.12481239134803558
+        ],
+        "block_bootstrap_95_lo_dps": [
+          0.011291000000000004,
+          -0.0651942105263158,
+          -0.03859578947368421
+        ],
+        "block_bootstrap_95_hi_dps": [
+          0.026549500000000004,
+          0.0027475000000000012,
+          0.003969
+        ],
+        "mean_accel_ms2": [
+          2.3289923728813555,
+          0.2804033898305085,
+          9.522733220338981
+        ],
+        "median_accel_norm_ms2": 9.806833604002874
+      },
+      {
+        "session": 5,
+        "n": 212,
+        "blocks_2s": 11,
+        "bias_dps": [
+          -0.01639193396226415,
+          0.022066273584905663,
+          -0.0018208490566037716
+        ],
+        "sample_std_dps": [
+          0.09040090815787266,
+          0.1319911454260557,
+          0.0910581495645463
+        ],
+        "block_bootstrap_95_lo_dps": [
+          -0.0265755413875598,
+          0.0012757257775119616,
+          -0.00998666052631579
+        ],
+        "block_bootstrap_95_hi_dps": [
+          -0.004320994736842107,
+          0.04334824348086125,
+          0.00600465789473684
+        ],
+        "mean_accel_ms2": [
+          2.4324530188679243,
+          0.3268826415094339,
+          9.495805990566037
+        ],
+        "median_accel_norm_ms2": 9.808197736327504
+      }
+    ],
+    "flight_session": 5,
+    "correction": "gyro_corrected_dps = raw_dps - bias_dps; multiply by pi/180 for rad/s",
+    "scale_cross_axis_temperature_identifiable": false
+  },
+  "accelerometer": {
+    "full_affine_calibration_identifiable": false,
+    "known_pose_provided_for_this_mount": false,
+    "flight_stationary_mean_ms2": [
+      2.4324530188679243,
+      0.3268826415094339,
+      9.495805990566037
+    ],
+    "stationary_norm_ms2": 9.808197736327504,
+    "illustrative_uniform_gain_if_zero_bias": 0.9998421997222006,
+    "uniform_gain_applied": false,
+    "bias_applied": false
+  },
+  "barometer": {
+    "ground_reference_pressure_pa": 100836.3,
+    "ground_logged_relative_altitude_median_m": -0.026,
+    "inferred_logger_reference_pressure_pa": 100835.97245258855,
+    "reference_pressure_scatter_pa": 0.01776719095802629,
+    "pressure_absolute_accuracy_calibrated": false
+  },
+  "mag_reference_other_pcb": {
+    "offset_uT": [
+      -5.84,
+      3.08,
+      11.92
+    ],
+    "mapping": [
+      [
+        1.001,
+        0.012,
+        0.009
+      ],
+      [
+        0.012,
+        1.006,
+        -0.001
+      ],
+      [
+        0.009,
+        -0.001,
+        0.994
+      ]
+    ],
+    "field_uT": 25.25,
+    "representative_of_flight_pcb": false
+  },
+  "mag_diagnostic_hard_iron_only": {
+    "offset_uT": [
+      -39.62848879875357,
+      4.58388659462242,
+      -44.13676056773713
+    ],
+    "field_radius_uT": 44.559296567342656,
+    "radial_rmse_uT": 1.6929076676361767,
+    "condition": 58.6548210311784,
+    "cross_validation": {
+      "early_descent": {
+        "offset_uT": [
+          -40.53875852089667,
+          4.199179235772005,
+          -45.514224462328926
+        ],
+        "field_radius_uT": 43.60366725199467,
+        "radial_rmse_uT": 1.7044098698503705,
+        "condition": 56.10028918626337,
+        "other_half_rmse_uT": 1.8544628805374719
+      },
+      "late_descent": {
+        "offset_uT": [
+          -38.85506814393078,
+          5.609053247378899,
+          -41.80898848753145
+        ],
+        "field_radius_uT": 46.0288777495631,
+        "radial_rmse_uT": 1.4864537493297483,
+        "condition": 58.21561487089877,
+        "other_half_rmse_uT": 2.0972022901809138
+      }
+    },
+    "flight_approved": false,
+    "absolute_heading_validated": false
+  }
+}
