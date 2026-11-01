@@ -54,9 +54,10 @@ typedef struct {
 /*
  * Calibrated values in the installed sensors' native axes. Magnetometer
  * offset/matrix calibration must already have been applied in IIS2MDC axes.
- * Set correct_bmi_to_body_origin only when the physical-Body origin is the
- * intended cylinder-axis reference. body_alpha_z uses the payload/Body +Z
- * sign; it is ignored when correction is disabled.
+ * The BMI acceleration is always transferred to the physical-Body origin,
+ * which is defined as the cylinder axis. body_alpha_z uses the payload/Body
+ * +Z sign. Supply zero to retain centripetal correction while deliberately
+ * omitting tangential correction.
  */
 typedef struct {
     uint32_t system_time_ms;
@@ -68,7 +69,6 @@ typedef struct {
     bool mag_valid;
     bool accel_correction_allowed;
     bool mag_correction_allowed;
-    bool correct_bmi_to_body_origin;
     float body_alpha_z_rad_s2;
 } DcsInstalledAttitudeSample;
 

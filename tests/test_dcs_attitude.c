@@ -331,7 +331,6 @@ static void test_installed_sensor_entry_point(void)
     assert(state.accel_correction_used && state.mag_correction_used);
     close_to(state.payload_heading_rad, 0.0f, 0.0001f);
 
-    sample.correct_bmi_to_body_origin = true;
     sample.body_alpha_z_rad_s2 = NAN;
     sample.system_time_ms += 10U;
     assert(!dcs_attitude_update_installed(&state, &config, &sample));

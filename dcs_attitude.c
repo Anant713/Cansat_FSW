@@ -292,9 +292,7 @@ bool dcs_attitude_update_installed(
     DcsAttitudeSample payload_sample;
     DcsVec3 payload_gyro;
 
-    if (sample == NULL ||
-        (sample->correct_bmi_to_body_origin &&
-         !isfinite(sample->body_alpha_z_rad_s2))) {
+    if (sample == NULL || !isfinite(sample->body_alpha_z_rad_s2)) {
         return false;
     }
 
@@ -302,12 +300,10 @@ bool dcs_attitude_update_installed(
     payload_sample = (DcsAttitudeSample){
         .system_time_ms = sample->system_time_ms,
         .gyro_rad_s = payload_gyro,
-        .accel_mps2 = sample->correct_bmi_to_body_origin
-            ? dcs_bmi_accel_to_body_origin_payload(
-                sample->accel_bmi_mps2,
-                payload_gyro.z,
-                sample->body_alpha_z_rad_s2)
-            : dcs_bmi_vector_to_payload(sample->accel_bmi_mps2),
+        .accel_mps2 = dcs_bmi_accel_to_body_origin_payload(
+            sample->accel_bmi_mps2,
+            payload_gyro.z,
+            sample->body_alpha_z_rad_s2),
         .mag_calibrated =
             dcs_mag_vector_to_payload(sample->mag_iis2mdc_calibrated),
         .gyro_valid = sample->gyro_valid,

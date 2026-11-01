@@ -29,9 +29,10 @@ offset and 3x3 mapping were identified in the native IIS2MDC coordinates.
 
 `dcs_sensor_transform` implements both mappings. The BMI mapping applies to
 both gyro and accelerometer vectors. Flight integration should call
-`dcs_attitude_update_installed`; it performs these mappings and then invokes the
-payload-frame Fusion update. `dcs_attitude_update` remains the lower-level API
-for data already expressed in payload axes.
+`dcs_attitude_update_installed`; it performs these mappings, always transfers
+BMI acceleration to the cylinder axis, and then invokes the payload-frame
+Fusion update. `dcs_attitude_update` remains the lower-level API for data
+already expressed at the payload-frame reference point.
 
 ## BMI lever arm
 
@@ -55,7 +56,8 @@ effectively the same at the two points. Call
 `dcs_bmi_accel_to_body_origin_payload` with payload/Body `omega_z` and `alpha_z`.
 Since BMI +Z points out of the drawing, `omega_z = -calibrated_bmi_gyro_z`.
 Estimate alpha from timestamped gyro samples only if its noise is acceptable;
-passing zero deliberately omits tangential correction.
+passing zero retains the centripetal correction and deliberately omits only the
+tangential correction.
 
 This correction is valid only for the assumed rigid cylinder-axis rotation. A
 parafoil and suspended CanSat form a flexible coupled system, so there is no

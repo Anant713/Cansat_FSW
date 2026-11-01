@@ -148,28 +148,24 @@ separate magnetic timestamp. Zero vectors represent references withheld from
 Fusion; they do not stop gyro integration. No calibration or separate gyro-bias
 estimator is used here.
 
-On Windows, build and run all desktop checks with GCC:
+On Windows, compile every portable DCS and Fusion source into one static
+library, then run all desktop checks:
 
 ```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/build_all.ps1 -Target Host
 powershell -NoProfile -ExecutionPolicy Bypass -File tests/run_host_tests.ps1
 python tools/vendor_fusion.py --verify
 ```
 
-Executables are written to the ignored .build/host directory. Equivalent C11
-compiler commands (use platform-appropriate executable suffixes):
+The host library is `.build/host/all/libdcs.a`. To build the same sources for
+the STM32F405 Cortex-M4F using the GNU Arm toolchain:
 
-```sh
-gcc -std=c11 -Wall -Wextra -Werror -pedantic -I. dcs_nav.c tests/test_dcs_nav.c -lm -o dcs_nav_test
-./dcs_nav_test
-gcc -std=c11 -Wall -Wextra -Werror -pedantic -DFUSION_USE_NORMAL_SQRT -I. dcs_attitude.c third_party/Fusion/Fusion/FusionAhrs.c tests/test_dcs_attitude.c -lm -o dcs_attitude_test
-./dcs_attitude_test
-gcc -std=c11 -Wall -Wextra -Werror -pedantic -I. dcs_wind.c tests/test_dcs_wind.c -lm -o dcs_wind_test
-./dcs_wind_test
-gcc -std=c11 -Wall -Wextra -Werror -pedantic -I. dcs_dubins.c tests/test_dcs_dubins.c -lm -o dcs_dubins_test
-./dcs_dubins_test
-gcc -std=c11 -Wall -Wextra -Werror -pedantic -I. dcs_planner.c dcs_dubins.c tests/test_dcs_planner.c -lm -o dcs_planner_test
-./dcs_planner_test
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/build_all.ps1 -Target Arm
 ```
+
+This produces `.build/arm/all/libdcs.a`. A GNU Makefile provides equivalent
+`make host`, `make arm`, and `make tests` targets where GNU Make is installed.
 
 The flight-software integration supplies monotonic millisecond timestamps,
 fresh valid GNSS solutions, calibrated attitude sensor vectors, and brake commands.
