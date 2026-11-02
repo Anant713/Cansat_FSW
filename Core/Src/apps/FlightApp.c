@@ -8,6 +8,8 @@
 #include "apps/Logging.h"
 #include "apps/StateMachine.h"
 #include "apps/BarometricAltitude.h"
+#include "apps/Estimation.h"
+#include "apps/Control.h"
 
 /* Available in the debugger; later operations will consume this shared data. */
 Cansat flight_cansat;
@@ -37,6 +39,7 @@ void App_Init(void)
     flight_calibration_init_ok = SensorAcquisition_CalibrateAtStartup(&flight_cansat);
     flight_communication_init_ok = Communication_Init();
     flight_state_init_ok = StateMachine_Init(&flight_cansat);
+    if (!Estimation_Init() || !Control_Init()) Error_Handler();
     lastTelemetry = lastLog = HAL_GetTick();
     lastAcquisition = lastTelemetry - ACQUISITION_PERIOD_MS;
     /* A failed sensor does not prevent acquisition from the others.
@@ -60,7 +63,9 @@ void App_RunOnce(void)
         flight_cansat.bmp.heightValid = false;
         flight_cansat.navigation.altitudeValid = false;
     }
+    Estimation_Update(&flight_cansat);
     StateMachine_Update(&flight_cansat);
+    Control_Update(&flight_cansat);
     /* Refresh after acquisition; both due operations use the same Cansat data.
      * Send first so a successful packet count is reflected in the log row. */
     now = HAL_GetTick();

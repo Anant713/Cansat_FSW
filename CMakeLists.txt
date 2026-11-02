@@ -40,6 +40,8 @@ if(FIRMWARE_APP STREQUAL "flight" OR FIRMWARE_APP STREQUAL "testHILS" OR FIRMWAR
         Core/Src/apps/StateMachine.c
         Core/Src/apps/BarometricAltitude.c
         Core/Src/apps/CameraControl.c
+        Core/Src/apps/Estimation.c
+        Core/Src/apps/Control.c
     )
     if(FIRMWARE_APP STREQUAL "testHILS" OR FIRMWARE_APP STREQUAL "testHILS_telemetry_on")
         list(REMOVE_ITEM FIRMWARE_SOURCES Core/Src/apps/FlightApp.c)
@@ -151,6 +153,30 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/drivers/GNSS_HAL.c
     Core/Src/drivers/XBee.c
 )
+
+if(FIRMWARE_APP STREQUAL "flight" OR FIRMWARE_APP STREQUAL "testHILS" OR FIRMWARE_APP STREQUAL "testHILS_telemetry_on")
+    set(DCS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/DCS_Firmware")
+    target_sources(${CMAKE_PROJECT_NAME} PRIVATE
+        ${DCS_ROOT}/dcs_attitude.c
+        ${DCS_ROOT}/dcs_circle_fit.c
+        ${DCS_ROOT}/dcs_control.c
+        ${DCS_ROOT}/dcs_dubins.c
+        ${DCS_ROOT}/dcs_flight_config.c
+        ${DCS_ROOT}/dcs_guidance.c
+        ${DCS_ROOT}/dcs_nav.c
+        ${DCS_ROOT}/dcs_planner.c
+        ${DCS_ROOT}/dcs_runtime.c
+        ${DCS_ROOT}/dcs_sensor_transform.c
+        ${DCS_ROOT}/dcs_wind.c
+        ${DCS_ROOT}/third_party/Fusion/Fusion/FusionAhrs.c
+        ${DCS_ROOT}/third_party/Fusion/Fusion/FusionConvention.c
+    )
+    target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
+        ${DCS_ROOT}
+        ${DCS_ROOT}/third_party/Fusion/Fusion
+    )
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE FUSION_USE_NORMAL_SQRT)
+endif()
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
