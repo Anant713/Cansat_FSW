@@ -93,7 +93,7 @@ sector 11 resets the journal and must not be done during a mission.
   Recovered ascent/descent starts recording after the boot initialization finishes.
   Repeated Start while active is ignored; Stop cancels a pending capture pulse.
 - Descent 1 keeps camera recording active; it adds no actuator command.
-- Descent 2 raises HDRM for 2000 ms, then lowers it and commits deployment complete.
+- Descent 2 raises HDRM for 10000 ms, then lowers it and commits deployment complete.
   The confirmed recovery policy repeats a full pulse if completion was not committed.
   Completed deployment is not pulsed again. `parafoilDeployed` indicates commanded
   pulse completion, not physical feedback. Even if saving completion fails, HDRM
@@ -164,7 +164,7 @@ loop, commands, camera/HDRM outputs, SD logging and flash recovery, see
 
 ## Main flight startup outputs and calibration
 
-FlightApp turns the LED on and enables both servo PWM channels at 0 degrees before
+FlightApp turns the LED on and enables both servo PWM channels at 5 degrees before
 SD/sensor startup. A failed servo initialization or PWM start enters Error_Handler.
 The output snapshot is copied into Cansat. These outputs also apply to both HILS
 variants, which reuse FlightApp directly.
@@ -179,4 +179,6 @@ hold the state machine on the launch pad. A missing or invalid BMP ground refere
 still safely inhibits height transitions. If launch-pad calibration fails, including
 the 10-second stationary-gyro timeout, SensorAcquisition installs **100715 Pa** as a
 RAM-only backup ground reference. The backup is not written over the persisted
-calibration pair. Command 3 remains a no-op.
+calibration pair. A usable fallback also releases launch-pad camera recording.
+On touchdown, one final CSV row is attempted before logging is closed so the
+terminal mission state is not lost. Command 3 remains a no-op.

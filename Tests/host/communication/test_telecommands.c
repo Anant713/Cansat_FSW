@@ -17,7 +17,7 @@ static char output[16000];
 static bool ledOutput;
 static ServoData startupServo;
 bool Servo_Init(void) { startupServo = (ServoData){0}; return true; }
-void Servo_SetAngles(float a, float b) { assert(a == 0 && b == 0); startupServo.servo1Angle = a; startupServo.servo2Angle = b; }
+void Servo_SetAngles(float a, float b) { assert(a == SERVO_MIN_ANGLE_DEG && b == SERVO_MIN_ANGLE_DEG); startupServo.servo1Angle = a; startupServo.servo2Angle = b; }
 void Servo_Enable(void) { startupServo.enabled = true; }
 bool Servo_GetData(ServoData *s) { *s = startupServo; return true; }
 void Switches_LED(bool enabled) { ledOutput = enabled; }
@@ -81,6 +81,7 @@ XBeeResult XBee_Read(uint8_t *bytes, uint16_t capacity, uint16_t *length)
 { assert(capacity >= rxLength); memcpy(bytes, rx, rxLength); *length = rxLength; rxLength = 0; return XBEE_OK; }
 void XBee_GetDiagnostics(XBeeDiagnostics *d) { memset(d, 0, sizeof(*d)); }
 XBeeStatus XBee_GetStatus(void) { return XBEE_READY; }
+XBeeResult XBee_Recover(void) { return XBEE_OK; }
 static void receive(const uint8_t *bytes, uint16_t length)
 { assert(length <= sizeof(rx)); memcpy(rx, bytes, length); rxLength = length; App_RunOnce(); }
 int main(void)

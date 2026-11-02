@@ -9,8 +9,8 @@ static ServoData data;
 
 static float clamp_angle(float angle)
 {
-    if (angle < 0.0f) return 0.0f;
-    if (angle > 180.0f) return 180.0f;
+    if (angle < SERVO_MIN_ANGLE_DEG) return SERVO_MIN_ANGLE_DEG;
+    if (angle > SERVO_MAX_ANGLE_DEG) return SERVO_MAX_ANGLE_DEG;
     return angle;
 }
 
@@ -56,8 +56,8 @@ bool Servo_Init(void)
     (void)HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_1);
     (void)HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_2);
     SET_BIT(htim4.Instance->CCMR1, TIM_CCMR1_OC1PE | TIM_CCMR1_OC2PE);
-    data.servo1Angle = 90.0f;
-    data.servo2Angle = 90.0f;
+    data.servo1Angle = SERVO_MIN_ANGLE_DEG;
+    data.servo2Angle = SERVO_MIN_ANGLE_DEG;
     load_angles();
     /* Load PSC/ARR/CCR preloads before any PWM output is enabled. */
     htim4.Instance->EGR = TIM_EGR_UG;

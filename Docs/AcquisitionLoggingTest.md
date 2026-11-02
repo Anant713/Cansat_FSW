@@ -20,7 +20,7 @@ and save the pair to flash before normal tasks start. Keep stationary until
 `Calibration saved/restored` appears. Airborne/touchdown boots retain the saved
 reference instead of recalibrating. TestSensors uses the same startup policy.
 The telemetry variant uses UART4/XBee and enables transmission automatically.
-Both tests turn the LED on and enable both servos at 0 degrees before sensor/SD
+Both tests turn the LED on and enable both servos at 5 degrees before sensor/SD
 startup. PWM remains enabled to hold that angle. No mission transitions run.
 An empty mission journal
 is seeded with LAUNCH_PAD before saving calibration; existing mission state is preserved.

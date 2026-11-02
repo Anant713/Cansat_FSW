@@ -57,7 +57,7 @@ void App_Init(void)
         Servo_GetData(&test_acquisition_logging_data.actuators.servo);
     drone_servos_ok = test_acquisition_logging_data.actuators.servoValid &&
         test_acquisition_logging_data.actuators.servo.enabled;
-    Console_Write(drone_servos_ok ? "Servos enabled: both holding 0 degrees.\r\n" :
+    Console_Write(drone_servos_ok ? "Servos enabled: both holding 5 degrees.\r\n" :
                                   "Servo initialization/PWM enable FAILED.\r\n");
     drone_phase = DRONE_DISABLED;
     Console_Write("Drone test: telemetry always enabled; incoming XBee commands discarded.\r\n");

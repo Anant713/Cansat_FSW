@@ -29,7 +29,7 @@ after reset this alternate target again defaults to ON. Both use the same GUI.
 
 `Tests/testHILS.c` directly includes the current `Core/Src/apps/FlightApp.c`, rather
 than maintaining a separate copy of its startup and loop. Both HILS variants inherit
-the LED-on startup, enabled 0-degree servos, calibration/recovery policy, failure
+the LED-on startup, enabled 5-degree servos, calibration/recovery policy, failure
 checks and mission processing. Launch-pad calibration is deferred only until the PC
 supplies a stable pressure window; it then calls the same startup calibration and
 flash-save implementation. Airborne recovery uses that implementation immediately.
@@ -42,7 +42,7 @@ Mission decisions are made on the MCU. The GUI does not predict or force states.
 **This firmware operates real camera, HDRM and buzzer outputs and writes real
 mission/calibration flash records.** Use an indicator/test load for the initial
 HDRM run. A saved DESCENT_2 state can activate HDRM immediately on startup.
-The LED turns on and both servos are PWM-enabled at 0 degrees during startup,
+The LED turns on and both servos are PWM-enabled at 5 degrees during startup,
 as in the other combined tests. Estimation/control is not implemented by this test.
 
 ## What is simulated
@@ -149,7 +149,7 @@ Expected sequence with the current state-machine macros:
 |---|---|
 | LAUNCH_PAD → ASCENT | 5 distinct fresh samples above 30 m; camera recording already started on LAUNCH_PAD after startup calibration succeeded |
 | ASCENT → DESCENT_1 | Observed peak above 700 m and fall greater than 20 m, confirmed by 5 samples |
-| DESCENT_1 → DESCENT_2 | 5 samples below 600 m; HDRM on for 2 s; deployment completion saved |
+| DESCENT_1 → DESCENT_2 | 5 samples below 600 m; HDRM on for 10 s; deployment completion saved |
 | DESCENT_2 → TOUCHDOWN | 5 samples below 20 m; camera stops, buzzer starts, SD logging stops |
 
 Values are controlled by `Core/Inc/apps/StateMachine.h`. Peak increases only in
@@ -199,7 +199,7 @@ to stop advancing. Reconnect the GUI if your USB adapter itself disconnects.
 - Reset during the DESCENT_2 HDRM pulse: recovery repeats the full pulse, as
   specified by the existing state machine. After deployment completion is saved,
   resetting in DESCENT_2 must not repeat the pulse.
-  For this short 2-second window, the hardware reset button is easier than the
+  During this 10-second window, the hardware reset button is easier than the
   GUI confirmation dialog; use an indicator load while testing pulse replay.
 - Reset in TOUCHDOWN: touchdown actions are restored; logging stays stopped.
 - `recovered=1`, `flash=1`, unchanged ground pressure and `saved=1` show recovery

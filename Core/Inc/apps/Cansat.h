@@ -41,6 +41,7 @@ typedef struct
 
     float quaternion[4];          /* Dimensionless, scalar first: w, x, y, z. */
     float angularVelocity[3];     /* Estimated body X/Y/Z rates, degrees/second. */
+    uint32_t timestampMs;         /* Timestamp of the IMU sample behind this estimate. */
     bool quaternionValid;
     bool angularVelocityValid;
 } AttitudeData;
@@ -61,6 +62,8 @@ typedef struct
     float targetDistance;         /* metres to landing target */
     float headingError;           /* signed degrees */
     bool altitudeValid;
+    bool verticalVelocityValid;
+    bool horizontalVelocityValid;
     uint32_t altitudeTimestampMs; /* Producer timestamps fresh launch-relative estimates. */
     bool targetDistanceValid;
     bool headingErrorValid;

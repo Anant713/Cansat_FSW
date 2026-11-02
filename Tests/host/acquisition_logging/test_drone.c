@@ -11,7 +11,7 @@ void Switches_LED(bool on) { led = on; }
 static ServoData servo;
 bool Servo_Init(void) { servo = (ServoData){0}; return true; }
 void Servo_SetAngles(float first, float second)
-{ assert(first == 0.0f && second == 0.0f); servo.servo1Angle = first; servo.servo2Angle = second; }
+{ assert(first == SERVO_MIN_ANGLE_DEG && second == SERVO_MIN_ANGLE_DEG); servo.servo1Angle = first; servo.servo2Angle = second; }
 void Servo_Enable(void) { servo.enabled = true; }
 bool Servo_GetData(ServoData *out) { *out = servo; return true; }
 bool Switches_Init(void) { hdrm = false; return true; }
@@ -22,7 +22,8 @@ bool MissionStore_Save(uint32_t payload) { (void)payload; return true; }
 bool SensorAcquisition_CalibrateAtStartup(Cansat *c)
 {
     assert(c->missionState == CANSAT_STATE_LAUNCH_PAD);
-    assert(servo.enabled && servo.servo1Angle == 0.0f && servo.servo2Angle == 0.0f);
+    assert(servo.enabled && servo.servo1Angle == SERVO_MIN_ANGLE_DEG &&
+           servo.servo2Angle == SERVO_MIN_ANGLE_DEG);
     ++calibrations;
     assert(!hdrm);
     return calibrationOK;
@@ -41,8 +42,8 @@ int main(void)
     App_Init();
     assert(drone_servos_ok && test_acquisition_logging_data.actuators.servoValid);
     assert(test_acquisition_logging_data.actuators.servo.enabled);
-    assert(test_acquisition_logging_data.actuators.servo.servo1Angle == 0.0f);
-    assert(test_acquisition_logging_data.actuators.servo.servo2Angle == 0.0f);
+    assert(test_acquisition_logging_data.actuators.servo.servo1Angle == SERVO_MIN_ANGLE_DEG);
+    assert(test_acquisition_logging_data.actuators.servo.servo2Angle == SERVO_MIN_ANGLE_DEG);
     assert(calibrations == 1 && drone_phase == DRONE_WAITING && !hdrm);
     advance(1000); App_RunOnce();
     assert(drone_phase == DRONE_WAITING && !hdrm);
@@ -68,7 +69,8 @@ int main(void)
     pendingCommand = "stop"; App_RunOnce();
     assert(stopped && !hdrm && drone_phase == DRONE_DISABLED);
     advance(HDRM_ON + HDRM_FIRE); App_RunOnce(); assert(!hdrm);
-    assert(servo.enabled && servo.servo1Angle == 0.0f && servo.servo2Angle == 0.0f);
+    assert(servo.enabled && servo.servo1Angle == SERVO_MIN_ANGLE_DEG &&
+           servo.servo2Angle == SERVO_MIN_ANGLE_DEG);
     puts("No-command drone: startup calibration, countdown gating, always-on TX, RX discard, pulse, rollover and stop passed");
     return 0;
 }

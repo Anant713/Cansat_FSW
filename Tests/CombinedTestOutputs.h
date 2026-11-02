@@ -10,7 +10,7 @@ static inline bool CombinedTestOutputs_Init(Cansat *c)
     Switches_LED(true);
     bool servoOK = Servo_Init();
     if (servoOK) {
-        Servo_SetAngles(0.0f, 0.0f);
+        Servo_SetAngles(SERVO_MIN_ANGLE_DEG, SERVO_MIN_ANGLE_DEG);
         Servo_Enable();
     }
     Switches_Update(&c->switches);

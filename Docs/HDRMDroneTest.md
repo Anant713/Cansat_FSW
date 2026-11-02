@@ -7,7 +7,7 @@ and **no telecommands**, use [HDRMDroneNoCommands.md](HDRMDroneNoCommands.md).
 one-shot HDRM pulse. Tune the macros at the top of that file, in milliseconds:
 
 - `HDRM_FIRE`: delay after initialization finishes, default 30000 ms.
-- `HDRM_ON`: duration measured from actual HDRM activation, default 2000 ms.
+- `HDRM_ON`: duration measured from actual HDRM activation, default 10000 ms.
 
 ```powershell
 cmake --preset HDRMDroneTest

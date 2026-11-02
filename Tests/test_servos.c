@@ -21,9 +21,9 @@ void App_Init(void)
 {
     (void)Console_Init();
     ready = Servo_Init();
-    Console_Write(ready ? "Servo test ready; PWM disabled, saved angles 90 deg.\r\n" :
+    Console_Write(ready ? "Servo test ready; PWM disabled, saved angles 5 deg.\r\n" :
         "Servo init failed: check TIM4 1 MHz counter / 20 ms period.\r\n");
-    Console_Write("Commands: servo1 <0..180>, servo2 <0..180>, enable, disable, status, help.\r\n");
+    Console_Write("Commands: servo1 <5..45>, servo2 <5..45>, enable, disable, status, help.\r\n");
 }
 
 void App_RunOnce(void)
@@ -32,7 +32,7 @@ void App_RunOnce(void)
     if (input < 0) { Console_Write("Input lost/rejected. Press Enter and resend.\r\n"); return; }
     if (input != CONSOLE_LINE_READY) return;
     if (!strcmp(line, "help")) {
-        Console_Write("servo1 45 or servo2 120.5 sets angle; enable starts BOTH servos; disable stops BOTH; status.\r\n");
+        Console_Write("servo1 45 or servo2 30 sets angle; enable starts BOTH servos; disable stops BOTH; status.\r\n");
         return;
     }
     if (!ready) { Console_Write("Servo initialization failed.\r\n"); return; }
@@ -48,8 +48,9 @@ void App_RunOnce(void)
         float angle = strtof(line + 7, &end);
         bool parsed = end != line + 7;
         while (isspace((unsigned char)*end)) ++end;
-        if (!parsed || *end || !isfinite(angle) || angle < 0 || angle > 180) {
-            Console_Write("Enter a finite angle from 0 to 180 degrees.\r\n"); return;
+        if (!parsed || *end || !isfinite(angle) ||
+            angle < SERVO_MIN_ANGLE_DEG || angle > SERVO_MAX_ANGLE_DEG) {
+            Console_Write("Enter a finite angle from 5 to 45 degrees.\r\n"); return;
         }
         if (first) Servo1_SetAngle(angle); else Servo2_SetAngle(angle);
     }

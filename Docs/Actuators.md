@@ -16,7 +16,8 @@ ticks every microsecond and repeats at 50 Hz. Init checks the clock, prescaler,
 period and PWM configuration; it returns false on a mismatch rather than silently
 generating the wrong pulse widths. Keep TIM4 dedicated to the two servos.
 
-`Servo_Init()` leaves PWM disabled with both requested angles at 90 degrees.
+`Servo_Init()` leaves PWM disabled with both requested angles at the 5-degree
+minimum.
 Set the desired positions before enabling. `Servo_Disable()` stops both outputs
 but retains requested positions; it does not switch off servo power. Enabling
 again uses the retained angles. A failed HAL channel start stops both channels
@@ -27,20 +28,23 @@ and leaves `Servo_GetData().enabled` false.
 Switches_LED(true);
 Switches_Buzzer(false);
 
-Servo_SetAngles(0.0f, 90.0f);
+Servo_SetAngles(5.0f, 5.0f);
 Servo_Enable();
 
 /* Later, without blocking the main loop: */
 Servo1_SetAngle(45.0f);
-Servo2_SetAngle(180.0f);
+Servo2_SetAngle(30.0f);
 ```
 
-Pulse width is `500 + angle * 1900 / 180` microseconds, rounded to the nearest
-counter tick. Thus 0/90/180 degrees map to 500/1450/2400 microseconds. Finite
-out-of-range values are clamped. NaN/infinity are ignored; the paired setter
-rejects both values if either is invalid. GetData reports requested angles, not
-position feedback. Changes use compare preloads and take effect together on the
-next timer update (up to 20 ms), without resetting a running PWM frame.
+Servo 1 (TIM4 CH1/PB6) pulls the left brake line; servo 2 (TIM4 CH2/PB7) pulls
+the right brake line. Commands are hard-clamped to 5..45 degrees at the driver
+boundary, so no application or DCS request can command zero. Pulse width is
+`500 + angle * 2000 / 180` microseconds, rounded to the nearest counter tick;
+5 and 45 degrees map to 556 and 1000 microseconds. NaN/infinity are ignored;
+the paired setter rejects both values if either is invalid. GetData reports
+requested angles, not position feedback. Changes use compare preloads and take
+effect together on the next timer update (up to 20 ms), without resetting a
+running PWM frame.
 
 Use these APIs from one main-loop caller, not concurrently from interrupts.
 No delays, DMA or timer interrupts are used. No further IOC changes are needed
@@ -54,5 +58,5 @@ gcc -std=c11 -Wall -Wextra -Werror -ITests/host/actuators -ICore/Inc Tests/host/
 ```
 
 Hardware verification remains: measure PB6/PB7 periods of 20 ms and pulses of
-500, 1450 and 2400 microseconds, and check switch GPIOs start LOW. No board was
+556 and 1000 microseconds, and check switch GPIOs start LOW. No board was
 flashed or attached actuators operated during implementation.

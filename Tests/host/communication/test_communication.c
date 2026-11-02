@@ -12,7 +12,8 @@ UART_HandleTypeDef huart4;
 static uint32_t tick;
 static bool busy;
 static XBeeResult sendResult = XBEE_OK, readResult = XBEE_OK, initResult = XBEE_OK;
-static unsigned sends, processes, reads;
+static XBeeStatus xbeeStatus = XBEE_READY;
+static unsigned sends, processes, reads, recoveries;
 static uint8_t sent[XBEE_TX_CAPACITY + 1U];
 static uint16_t sentLength;
 static const uint8_t incoming[] = {'C', 'M', 'D', 0, 'X', '\r'};
@@ -38,6 +39,8 @@ XBeeResult XBee_Init(UART_HandleTypeDef *uart)
 }
 bool XBee_IsTxBusy(void) { return busy; }
 void XBee_Process(void) { ++processes; }
+XBeeStatus XBee_GetStatus(void) { return xbeeStatus; }
+XBeeResult XBee_Recover(void) { ++recoveries; xbeeStatus = XBEE_RECOVERING; return XBEE_OK; }
 XBeeResult XBee_Send(const uint8_t *bytes, uint16_t length)
 {
     assert(length > 0U && length <= XBEE_TX_CAPACITY);
@@ -72,7 +75,9 @@ static Cansat fixture(void)
     c.navigation.targetDistance = 456.7f;
     c.navigation.headingError = -12.34f;
     c.navigation.altitudeValid = c.navigation.targetDistanceValid = c.navigation.headingErrorValid = true;
-    c.bmp = (BMP280Data){.pressure = 101325, .temperature = -12.5f, .valid = true, .relativeHeightM = 123.4f, .heightValid = true};
+    c.bmp = (BMP280Data){.pressure = 101325, .temperature = -12.5f,
+        .timestamp_ms = c.telemetry.uptimeMs, .valid = true,
+        .relativeHeightM = 123.4f, .heightValid = true};
     c.battery = (BatteryData){.voltage = 7.25f, .valid = true};
     c.gnss = (GNSSData){.utcTime = 123459, .utcMilliseconds = 875,
         .latitude = -12.3456, .longitude = -76.5432,
@@ -81,23 +86,33 @@ static Cansat fixture(void)
         .valid = true, .fixValid = true, .utcValid = true, .altitudeValid = true,
         .vtgValid = true, .speedValid = true, .courseValid = true};
     c.bmi = (BMI270Data){.accelX = 1.25f, .accelY = -2.5f, .accelZ = 9.75f,
-        .gyroX = 12.3f, .gyroY = -45.6f, .gyroZ = 78.9f, .valid = true};
+        .gyroX = 12.3f, .gyroY = -45.6f, .gyroZ = 78.9f,
+        .timestamp_ms = c.telemetry.uptimeMs, .valid = true};
     c.missionState = CANSAT_STATE_DESCENT_2;
-    c.env = (AHT20Data){.humidity = 45.625f, .valid = true};
-    c.mag = (IIS2MDCData){.magX = 18.25f, .magY = -20, .magZ = 51.25f, .valid = true};
+    c.env = (AHT20Data){.humidity = 45.625f,
+        .timestamp_ms = c.telemetry.uptimeMs, .valid = true};
+    c.mag = (IIS2MDCData){.magX = 18.25f, .magY = -20, .magZ = 51.25f,
+        .timestamp_ms = c.telemetry.uptimeMs, .valid = true};
     c.attitude.quaternion[0] = 0.5f;
     c.attitude.quaternion[1] = 0.5f;
     c.attitude.quaternion[2] = -0.5f;
     c.attitude.quaternion[3] = 0.5f;
     c.attitude.quaternionValid = true;
+    c.attitude.timestampMs = c.telemetry.uptimeMs;
     c.attitude.angularVelocity[0] = 1.25f;
     c.attitude.angularVelocity[1] = -2.25f;
     c.attitude.angularVelocity[2] = 3.25f;
     c.attitude.angularVelocityValid = true;
     c.actuators.parafoilDeployed = true;
-    c.actuators.servo = (ServoData){.servo1Angle = 45, .servo2Angle = 135};
+    c.actuators.servo = (ServoData){.servo1Angle = 45, .servo2Angle = 35};
     c.actuators.servoValid = true;
     return c;
+}
+
+static void make_measurements_fresh(Cansat *c)
+{
+    c->bmp.timestamp_ms = c->bmi.timestamp_ms = c->env.timestamp_ms =
+        c->mag.timestamp_ms = c->attitude.timestampMs = c->telemetry.uptimeMs;
 }
 
 
@@ -145,7 +160,7 @@ static void test_packet(void)
         0x04,0x2c,0x39,0x30,0x2c,0x88,0x13,0x2c,0x88,0x13,0x2c,0x78,
         0xec,0x2c,0x88,0x13,0x2c,0x0d,0x00,0x2c,0xe9,0xff,0x2c,0x21,
         0x00,0x2c,0x01,0x2c,0xd7,0x11,0x2c,0x2e,0xfb,0x2c,0x2d,0x2c,
-        0x87,0x2c,0x09,0x2c,0x01,0x2c,0x2a,0x00,0x0d
+        0x23,0x2c,0x09,0x2c,0x01,0x2c,0x2a,0x00,0x0d
     };
     _Static_assert(sizeof(expected) == 151U, "PDF packet budget");
     memset(bytes, 0xaa, sizeof(bytes));
@@ -177,6 +192,17 @@ static void test_invalid_and_limits(void)
 {
     Cansat c = fixture();
     uint8_t bytes[151];
+    c.telemetry.uptimeMs += TELEMETRY_AHT_MAX_AGE_MS + 1U;
+    assert(Communication_FormatTelemetry(&c, bytes, sizeof(bytes)) == 151);
+    const unsigned staleFields[] = {3,4,5,16,17,18,19,20,21,23,24,25,26,
+                                    29,30,31,32,33,34,35};
+    for (unsigned i = 0; i < sizeof(staleFields) / sizeof(staleFields[0]); ++i) {
+        unsigned field = staleFields[i];
+        uint32_t sentinel = signedField[field] ? 0x8000U :
+            (1UL << (widths[field] * 8U)) - 1U;
+        assert(value(bytes, field) == sentinel);
+    }
+    c = fixture();
     c.bmp.heightValid = false;
     assert(Communication_FormatTelemetry(&c, bytes, sizeof(bytes)) == 151);
     assert(value(bytes, 3) == 65535 && value(bytes, 14) == 2225);
@@ -208,6 +234,7 @@ static void test_invalid_and_limits(void)
     }
     c = fixture();
     c.telemetry.uptimeMs = 0xfffffe;
+    make_measurements_fresh(&c);
     c.bmp.temperature = -327.67f; c.bmp.pressure = 16777214;
     c.battery.voltage = 65.534f;
     c.bmp.relativeHeightM = 6553.4f;
@@ -225,6 +252,7 @@ static void test_invalid_and_limits(void)
     /* Sentinel endpoints cannot be mistaken for measurements. Known counters
      * and booleans still have their full binary range. */
     c.telemetry.uptimeMs = 0xffffff;
+    make_measurements_fresh(&c);
     c.bmp.temperature = -327.68f; c.bmp.pressure = 16777215;
     c.battery.voltage = 65.535f;
     c.telemetry.packetCount = c.telemetry.receivedPacketCount = 65535;
@@ -266,7 +294,8 @@ static void test_send_and_service(void)
 {
     Cansat c = fixture();
     c.telemetry.packetCount = 0;
-    sends = processes = reads = 0;
+    sends = processes = reads = recoveries = 0;
+    xbeeStatus = XBEE_READY;
     tick = UINT32_MAX - 500U;
     assert(Communication_Init());
     c.telemetry.enabled = true;
@@ -274,6 +303,10 @@ static void test_send_and_service(void)
     tick += 2000U;
     Communication_Update(&c);
     assert(sends == 0 && processes == 2 && reads == 2); /* Scheduling is in FlightApp. */
+    xbeeStatus = XBEE_FAULT;
+    Communication_Update(&c);
+    assert(recoveries == 1 && xbeeStatus == XBEE_RECOVERING);
+    xbeeStatus = XBEE_READY;
     assert(Communication_SendTelemetry(&c));
     assert(sends == 1 && c.telemetry.packetCount == 1);
     assert(sentLength == 151 && value(sent, 2) == 1); layout(sent);

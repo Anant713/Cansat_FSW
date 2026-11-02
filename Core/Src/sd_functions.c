@@ -49,7 +49,8 @@ int sd_get_space_kb(void) {
 	fre_sect = fre_clust * pfs->csize;
 	total_kb = tot_sect / 2;
 	free_kb = fre_sect / 2;
-	printf("💾 Total: %lu KB, Free: %lu KB\r\n", total_kb, free_kb);
+	printf("💾 Total: %lu KB, Free: %lu KB\r\n",
+	       (unsigned long)total_kb, (unsigned long)free_kb);
 	return FR_OK;
 }
 

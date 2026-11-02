@@ -7,6 +7,11 @@ typedef struct Cansat Cansat;
 #define TELEMETRY_BINARY_SIZE 151U
 #define TELEMETRY_FIELD_COUNT 44U
 #define TELEMETRY_CSV_CAPACITY 512U /* Includes CRLF and local NUL. */
+#define TELEMETRY_BMP_MAX_AGE_MS 1000U
+#define TELEMETRY_BMI_MAX_AGE_MS 250U
+#define TELEMETRY_MAG_MAX_AGE_MS 250U
+#define TELEMETRY_AHT_MAX_AGE_MS 3000U
+#define TELEMETRY_ATTITUDE_MAX_AGE_MS 250U
 
 /* Shared quantization: native Cansat units -> binary wire values/sentinels.
  * Does not read hardware, increment counters, or change Cansat. */

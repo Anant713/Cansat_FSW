@@ -22,7 +22,7 @@ bool Switches_Init(void) { startupLed = false; return true; }
 void Switches_LED(bool on) { startupLed = on; }
 void Switches_Update(SwitchState *s) { s->led = startupLed; }
 bool Servo_Init(void) { startupServo = (ServoData){0}; return true; }
-void Servo_SetAngles(float a, float b) { assert(a == 0 && b == 0); startupServo.servo1Angle = a; startupServo.servo2Angle = b; }
+void Servo_SetAngles(float a, float b) { assert(a == SERVO_MIN_ANGLE_DEG && b == SERVO_MIN_ANGLE_DEG); startupServo.servo1Angle = a; startupServo.servo2Angle = b; }
 void Servo_Enable(void) { startupServo.enabled = true; }
 bool Servo_GetData(ServoData *s) { *s = startupServo; return true; }
 #endif

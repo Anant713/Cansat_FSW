@@ -11,7 +11,7 @@
 static uint32_t flash[MISSION_STORE_SIZE / 4U], tick;
 static int writesLeft = -1;
 static bool dvr, capture, hdrm, buzzer;
-static unsigned stops;
+static unsigned stops, finalRows;
 uint32_t HAL_GetTick(void) { return tick; }
 void HAL_Delay(uint32_t ms) { tick += ms; }
 uint32_t MissionStore_ReadWord(uint32_t offset) { return flash[offset / 4U]; }
@@ -29,6 +29,7 @@ void Switches_HDRM(bool value) { hdrm = value; }
 void Switches_Buzzer(bool value) { buzzer = value; }
 void Switches_Update(SwitchState *s) { *s = (SwitchState){.dvr=dvr,.capture=capture,.hdrm=hdrm,.buzzer=buzzer}; }
 bool Logging_Stop(void) { ++stops; return true; }
+bool Logging_Write(const Cansat *c) { assert(c); ++finalRows; return true; }
 static void sample(Cansat *c, uint32_t time, float height)
 {
     tick = time;
@@ -92,14 +93,15 @@ int main(void)
     sample(&c, 10002, 599); assert(hdrm && c.missionState == CANSAT_STATE_DESCENT_2);
     sample(&c, 10003, 700);
     assert(StateMachine_GetStatus()->maxHeightM == 730); /* Frozen in DESCENT_2. */
-    sample(&c, 12001, 590); assert(hdrm);
-    sample(&c, 12002, 590); assert(!hdrm && c.actuators.parafoilDeployed);
+    sample(&c, 10002U + STATE_HDRM_PULSE_MS - 1U, 590); assert(hdrm);
+    sample(&c, 10002U + STATE_HDRM_PULSE_MS, 590);
+    assert(!hdrm && c.actuators.parafoilDeployed);
     reset_outputs(); c = (Cansat){0}; tick = 0;
     assert(StateMachine_Init(&c));
     assert(!hdrm && c.actuators.parafoilDeployed);
     sample(&c, 1, 20); assert(c.missionState == CANSAT_STATE_DESCENT_2);
     sample(&c, 2, 19); assert(c.missionState == CANSAT_STATE_TOUCHDOWN);
-    assert(buzzer && !dvr && capture && stops && !c.camera.isOn);
+    assert(buzzer && !dvr && capture && stops && finalRows && !c.camera.isOn);
     reset_outputs(); c = (Cansat){0};
     assert(StateMachine_Init(&c)); assert(buzzer && !dvr && capture);
     assert(StateMachine_BeginNewMission(&c));
@@ -142,8 +144,8 @@ int main(void)
     assert(StateMachine_Init(&c) && hdrm);
     tick = 1000; reset_outputs(); c = (Cansat){0};
     assert(StateMachine_Init(&c) && hdrm);
-    tick = 2999; StateMachine_Update(&c); assert(hdrm);
-    writesLeft = 0; tick = 3000; StateMachine_Update(&c);
+    tick = 1000U + STATE_HDRM_PULSE_MS - 1U; StateMachine_Update(&c); assert(hdrm);
+    writesLeft = 0; tick = 1000U + STATE_HDRM_PULSE_MS; StateMachine_Update(&c);
     assert(!hdrm && !StateMachine_GetStatus()->persistenceOK);
     writesLeft = -1;
     /* A full journal refuses writes without erasing the recovered record. */

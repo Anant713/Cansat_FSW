@@ -27,7 +27,7 @@ void App_Init(void)
     /* Generated main has already configured GPIO and TIM4. */
     if (!Switches_Init() || !Servo_Init()) Error_Handler();
     Switches_LED(true);
-    Servo_SetAngles(0.0f, 0.0f);
+    Servo_SetAngles(SERVO_MIN_ANGLE_DEG, SERVO_MIN_ANGLE_DEG);
     Servo_Enable(); /* Hold startup position throughout calibration and flight. */
     Cansat_Init(&flight_cansat);
     flight_cansat.actuators.servoValid = Servo_GetData(&flight_cansat.actuators.servo);
@@ -41,13 +41,13 @@ void App_Init(void)
     flight_sensor_init_ok = SensorAcquisition_Init();
     flight_calibration_init_ok = SensorAcquisition_CalibrateAtStartup(&flight_cansat);
     flight_communication_init_ok = Communication_Init();
-    StateMachine_SetCameraReady(flight_calibration_init_ok);
+    StateMachine_SetCameraReady(flight_calibration_init_ok ||
+        SensorAcquisition_GetGroundPressure() > 0.0f);
     flight_state_init_ok = StateMachine_Init(&flight_cansat);
     if (!Estimation_Init() || !Control_Init()) Error_Handler();
     lastTelemetry = lastLog = HAL_GetTick();
     lastAcquisition = lastTelemetry - ACQUISITION_PERIOD_MS;
-    /* A failed sensor does not prevent acquisition from the others.
-     * TODO: Initialize calibrated estimation and control. */
+    /* A failed sensor does not prevent acquisition from the others. */
 }
 
 void App_RunOnce(void)
@@ -59,8 +59,8 @@ void App_RunOnce(void)
         SensorAcquisition_Update(&flight_cansat);
     }
     Communication_Update(&flight_cansat);
-    /* Future attitude estimation runs after calibrated acquisition in every
-     * mission state. Auxiliary navigation altitude is updated separately;
+    /* Attitude estimation runs after calibrated acquisition in every mission
+     * state. Auxiliary navigation altitude is updated separately;
      * state-machine height gates read the BMP driver's relative height. */
     BarometricAltitude_Update(&flight_cansat);
     Estimation_Update(&flight_cansat);
@@ -79,9 +79,9 @@ void App_RunOnce(void)
         lastLog = now;
         if (Logging_IsReady()) (void)Logging_Write(&flight_cansat);
     }
-    /* TODO: Use software timers to run the flight processing sequence:
-     * acquisition -> command processing -> state machine -> estimation
-     * -> control -> telemetry -> logging.
+    /* Cooperative processing sequence: acquisition -> command processing ->
+     * barometric navigation -> estimation -> state machine -> control ->
+     * telemetry -> logging.
      * Acquisition and SD writes are synchronous and can delay these nominal
      * schedules. No busy wait or catch-up burst is used.
      */

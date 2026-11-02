@@ -51,20 +51,22 @@ int main(void)
     timer.PSC = 15; timer.ARR = 19999;
     timer.CCMR1 = TIM_OCMODE_PWM1 | (TIM_OCMODE_PWM1 << 8);
     assert(Servo_Init());
-    assert(Servo_GetData(&servos) && !servos.enabled && servos.servo1Angle == 90);
-    assert(timer.CCR[0] == 1450 && timer.CCR[1] == 1450 && !running);
+    assert(Servo_GetData(&servos) && !servos.enabled &&
+           servos.servo1Angle == SERVO_MIN_ANGLE_DEG &&
+           servos.servo2Angle == SERVO_MIN_ANGLE_DEG);
+    assert(timer.CCR[0] == 556 && timer.CCR[1] == 556 && !running);
     Servo_SetAngles(-20, 200);
-    assert(timer.CCR[0] == 500 && timer.CCR[1] == 2400);
+    assert(timer.CCR[0] == 556 && timer.CCR[1] == 1000);
     Servo_Enable(); assert(running == 3);
     unsigned previous_starts = starts;
     Servo_Enable(); assert(starts == previous_starts);
     timer.CNT = 1234; timer.EGR = 0;
     Servo_SetAngles(45, 135);
-    assert(timer.CCR[0] == 975 && timer.CCR[1] == 1925);
+    assert(timer.CCR[0] == 1000 && timer.CCR[1] == 1000);
     assert(timer.CNT == 1234 && timer.EGR == 0); /* No mid-frame restart. */
     Servo_SetAngles(NAN, 0); Servo2_SetAngle(INFINITY);
-    assert(timer.CCR[0] == 975 && timer.CCR[1] == 1925);
-    Servo1_SetAngle(90); assert(timer.CCR[0] == 1450 && timer.CCR[1] == 1925);
+    assert(timer.CCR[0] == 1000 && timer.CCR[1] == 1000);
+    Servo1_SetAngle(90); assert(timer.CCR[0] == 1000 && timer.CCR[1] == 1000);
     Servo_Disable(); assert(!running);
     fail_channel = TIM_CHANNEL_2;
     Servo_Enable(); assert(!running);

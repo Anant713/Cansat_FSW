@@ -6,7 +6,7 @@
 #define STATE_DESCENT_MIN_PEAK_M 700.0f
 #define STATE_PARAFOIL_HEIGHT_M 600.0f
 #define STATE_TOUCHDOWN_HEIGHT_M 20.0f
-#define STATE_HDRM_PULSE_MS 2000U
+#define STATE_HDRM_PULSE_MS 10000U
 #define STATE_ALTITUDE_MAX_AGE_MS 1000U
 #ifndef STATE_HEIGHT_CONFIRM_SAMPLES
 #define STATE_HEIGHT_CONFIRM_SAMPLES 5U
@@ -23,7 +23,8 @@ typedef struct {
 } StateMachineStatus;
 
 bool StateMachine_Init(Cansat *cansat);
-/* Flight/HILS startup gate: release only after sensor calibration/recovery succeeds. */
+/* Flight/HILS startup gate: release after a usable calibrated or fallback
+ * height reference is available. */
 void StateMachine_SetCameraReady(bool ready);
 void StateMachine_Update(Cansat *cansat);
 const StateMachineStatus *StateMachine_GetStatus(void);

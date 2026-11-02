@@ -11,10 +11,10 @@ cmake --build --preset HDRMDroneNoCommands
 Flash `build/HDRMDroneNoCommands/HDRM_drone_no_commands_test.elf` and open USART3
 at 115200 baud, 8N1. Keep the CanSat stationary until calibration SUCCESS appears.
 
-The LED turns on and both servos are commanded to 0 degrees and PWM-enabled before
+The LED turns on and both servos are commanded to 5 degrees and PWM-enabled before
 blocking SD/sensor startup. They hold that command throughout calibration, HDRM
 firing and afterward, including after console `stop`. Telemetry/CSV contain both
-0-degree commands. The console reports initialization/PWM-start failure if one
+5-degree commands. The console reports initialization/PWM-start failure if one
 occurs. Servo supply power must remain connected; enabling PWM supplies the control
 signal, not electrical power to the servos.
 

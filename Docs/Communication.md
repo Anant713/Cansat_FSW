@@ -42,12 +42,17 @@ Estimated angular velocity is body X/Y/Z in degrees/s; it is separate from Euler
 angle derivatives. Quaternion order is w,x,y,z, dimensionless. Communication does
 not calculate estimates or normalize quaternions.
 
+Timestamped BMP, BMI, AHT, magnetometer, quaternion, and angular-velocity fields
+are emitted only while fresh. Their current maximum ages are 1000, 250, 3000,
+250, and 250 ms respectively. A retained stale sample is encoded with the same
+unavailable sentinel as an invalid sample; it is never presented as current data.
+
 | Fields | PDF parameter | Cansat source | Scale / encoding | Wire range type | Byte offsets (zero-based) | Field widths (bytes) |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | TEAM ID | `telemetry.teamId` | 27 ASCII bytes, zero-padded | char array | 0 | 27 |
 | 2 | TIME STAMPING | `telemetry.uptimeMs` | Already milliseconds since boot | u24 | 28 | 3 |
 | 3 | PACKET COUNT | `telemetry.packetCount` | Integer | uint16 | 32 | 2 |
-| 4 | ALTITUDE | `bmp.relativeHeightM` | metres x10; requires bmp.valid and heightValid | uint16 | 35 | 2 |
+| 4 | ALTITUDE | `bmp.relativeHeightM` | metres x10; requires fresh bmp.valid and heightValid | uint16 | 35 | 2 |
 | 5 | PRESSURE | `bmp.pressure` | Pa x1 | u24 | 38 | 3 |
 | 6 | TEMPERATURE | `bmp.temperature` | degrees C x100 | int16 | 42 | 2 |
 | 7 | VOLTAGE | `battery.voltage` | volts x1000 | uint16 | 45 | 2 |
@@ -94,8 +99,9 @@ keep their full field width and use **unsigned maximum / signed minimum**:
 | signed 16-bit measurement | 00 80 | -32767..32767 |
 
 Invalid hemisphere is FF. No field is omitted or shortened. Semantic limits also
-apply to coordinates, UTC, humidity, the existing mission-state enum, and 0..180
-degree servo commands. The two counters, command ID, and boolean status fields
+apply to coordinates, UTC, humidity, the existing mission-state enum, and 5..45
+degree servo commands. Servo 1 is the left brake and servo 2 is the right brake.
+The two counters, command ID, and boolean status fields
 are known bookkeeping values and retain their full ranges without sentinels.
 
 Reserving an endpoint means it cannot also represent a real measurement. For
@@ -126,7 +132,7 @@ are not wrapped or saturated.
   value of 6553.4 m with the sentinel reserved.
 - uint16 packet counters wrap modulo 65536 (about 9.1 hours at 2 Hz). A wider
   counter would require updating the wire layout.
-- Servo uint8 fields suit the current 0..180 degree commands. Signed deflections
+- Servo uint8 fields suit the current 5..45 degree commands. Signed deflections
   would need a signed convention/type.
 - The native team ID array holds 27 characters plus NUL. The wire reserves exactly
   27 bytes. The default is the PDF example `2026-IN-SPACe-CAN-7USAT-016`;

@@ -21,6 +21,8 @@ static uint32_t tick;
 static bool initOK[DEVICE_COUNT], readOK[DEVICE_COUNT];
 static unsigned initCalls[DEVICE_COUNT], readCalls[DEVICE_COUNT];
 static unsigned starts, processes;
+static unsigned gnssRestarts;
+static bool gnssReceiving;
 static bool triggerOK = true;
 static bool humidityFails;
 static GNSSData gnssSnapshot;
@@ -84,7 +86,7 @@ static ServoData flightServo;
 bool Switches_Init(void) { flightLed = false; return true; }
 void Switches_LED(bool on) { flightLed = on; }
 void Switches_Update(SwitchState *s) { s->led = flightLed; }
-bool Servo_Init(void) { flightServo = (ServoData){.servo1Angle = 90, .servo2Angle = 90}; return true; }
+bool Servo_Init(void) { flightServo = (ServoData){.servo1Angle = 5, .servo2Angle = 5}; return true; }
 void Servo_SetAngles(float a, float b) { flightServo.servo1Angle = a; flightServo.servo2Angle = b; }
 void Servo_Enable(void) { flightServo.enabled = true; }
 bool Servo_GetData(ServoData *data)
@@ -146,8 +148,12 @@ bool GNSS_Init(UART_HandleTypeDef *uart, uint32_t baud)
 {
     assert(uart == &huart6 && baud == GNSS_EXPECTED_BAUD);
     ++initCalls[GNSS];
+    gnssReceiving = initOK[GNSS];
     return initOK[GNSS];
 }
+void GNSS_GetDiagnostics(GNSSDiagnostics *out)
+{ *out = (GNSSDiagnostics){.receiving = gnssReceiving}; }
+bool GNSS_StartReception(void) { ++gnssRestarts; gnssReceiving = true; return true; }
 
 bool BMP280_Read(BMP280 *dev, BMP280Data *data)
 {
@@ -224,7 +230,8 @@ static void reset(void)
         initOK[i] = readOK[i] = true;
         initCalls[i] = readCalls[i] = 0;
     }
-    starts = processes = 0;
+    starts = processes = gnssRestarts = 0;
+    gnssReceiving = false;
     tick = 100U;
     triggerOK = true;
     humidityFails = false;
@@ -278,6 +285,9 @@ static void test_acquisition(void)
     gnssSnapshot.valid = true; /* Fresh GGA with no fix must replace old fix. */
     assert(SensorAcquisition_UpdateGNSS(&c));
     assert(c.gnss.valid && !c.gnss.fixValid);
+    gnssReceiving = false;
+    (void)SensorAcquisition_UpdateGNSS(&c);
+    assert(gnssRestarts == 1 && gnssReceiving);
 
     tick = 2100U;
     humidityFails = true;
@@ -364,7 +374,8 @@ static void test_flight_integration(void)
     App_Init();
     assert(flightLed && flight_cansat.switches.led);
     assert(flight_cansat.actuators.servo.enabled);
-    assert(flight_cansat.actuators.servo.servo1Angle == 0 && flight_cansat.actuators.servo.servo2Angle == 0);
+    assert(flight_cansat.actuators.servo.servo1Angle == SERVO_MIN_ANGLE_DEG &&
+           flight_cansat.actuators.servo.servo2Angle == SERVO_MIN_ANGLE_DEG);
     assert(!flight_sensor_init_ok);
     App_RunOnce();
     assert(!flight_cansat.bmp.valid && flight_cansat.bmi.valid);
@@ -452,10 +463,17 @@ static void test_calibration(void)
     assert(testBmi->calibration_state == BMI270_CAL_IDLE);
     initOK[MAG] = false;
     unsigned before = calibrationStarts;
-    assert(!SensorAcquisition_StartCalibration(&c) && calibrationStarts == before);
+    assert(SensorAcquisition_StartCalibration(&c) && calibrationStarts == before + 1);
+    testBmi->calibration_state = BMI270_CAL_MOTION;
     assert(SensorAcquisition_UpdateCalibration() == SENSOR_CAL_FAILED);
+    initOK[MAG] = true; initOK[AHT] = false; before = calibrationStarts;
+    assert(SensorAcquisition_StartCalibration(&c) && calibrationStarts == before + 1);
+    testBmi->calibration_state = BMI270_CAL_MOTION;
+    assert(SensorAcquisition_UpdateCalibration() == SENSOR_CAL_FAILED);
+    initOK[AHT] = true; initOK[BMI] = false; before = calibrationStarts;
+    assert(!SensorAcquisition_StartCalibration(&c) && calibrationStarts == before);
     assert(!SensorAcquisition_StartCalibration(NULL));
-    initOK[MAG] = true; storedResult = CAL_STORE_ERROR;
+    initOK[BMI] = true; storedResult = CAL_STORE_ERROR;
     assert(!SensorAcquisition_Init());
     assert(!SensorAcquisition_HasCalibration() && SensorAcquisition_GetGroundPressure() == 0);
 }

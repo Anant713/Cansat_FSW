@@ -6,6 +6,8 @@ The main flight-software state machine owns secondary descent and HDRM timing.
 It calls `dcs_runtime_start` once only when the state is secondary descent and
 `parafoilDeployed` is true. The runtime's 5 s `CANOPY_SETTLING` timer therefore
 starts after the deployment pulse completes, not on entry to secondary descent.
+With the FSW's 10 s HDRM pulse and this 5 s settling timer, the identification
+turn cannot begin earlier than 15 s after entry to secondary descent.
 It then calls `dcs_runtime_update` from the cooperative super-loop through
 secondary descent and touchdown so a latched flare remains commanded. DCS does
 not infer deployment and does not create a second mission state machine.
@@ -89,8 +91,9 @@ pulse = neutral + normalized_pull * (maximum_pull - neutral)
 ```
 
 The frozen assumption is 556 us (approximately 5 degrees) neutral and 1000 us
-at the 45-degree pull endpoint on both MG996R channels, with an absolute
-500-2500 us bound. This has
+at the 45-degree pull endpoint on both MG996R channels. The absolute software
+bounds are also 556-1000 us, so DCS cannot request an angle outside the approved
+5-45 degree range. This has
 not been established from installed-linkage measurement. Before arming, the
 crew must at minimum verify neutral direction, pull direction, and absence of
 binding on both channels.

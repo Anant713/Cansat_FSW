@@ -72,8 +72,16 @@
 
 /* In-flight wind/trim identification. */
 #define DCS_FLIGHT_CANOPY_SETTLING_MS                         5000u
-/* 30 degree pull mapped over the installed 5..45 degree usable range. */
-#define DCS_FLIGHT_IDENTIFICATION_COMMAND                    0.625f
+#define DCS_FLIGHT_SERVO_NEUTRAL_ANGLE_DEG                     5.0f
+#define DCS_FLIGHT_IDENTIFICATION_PULL_ANGLE_DEG              30.0f
+#define DCS_FLIGHT_SERVO_MAX_PULL_ANGLE_DEG                   45.0f
+/* Map the 30-degree identification pull into the installed 5..45-degree
+ * actuator range. This evaluates to 0.625 normalized steering. */
+#define DCS_FLIGHT_IDENTIFICATION_COMMAND \
+    ((DCS_FLIGHT_IDENTIFICATION_PULL_ANGLE_DEG - \
+      DCS_FLIGHT_SERVO_NEUTRAL_ANGLE_DEG) / \
+     (DCS_FLIGHT_SERVO_MAX_PULL_ANGLE_DEG - \
+      DCS_FLIGHT_SERVO_NEUTRAL_ANGLE_DEG))
 #define DCS_FLIGHT_IDENTIFICATION_TIMEOUT_MS                 30000u
 #define DCS_FLIGHT_IDENTIFICATION_MIN_HEIGHT_M               150.0f
 #define DCS_FLIGHT_TRIM_SETTLING_MS                            3000u
@@ -107,14 +115,15 @@
 #define DCS_FLIGHT_CONTROLLER_MAX_STEP_S                        0.2f
 #define DCS_FLIGHT_FLARE_HEIGHT_M                               5.0f
 #define DCS_FLIGHT_FLARE_BRAKE_DEMAND                           0.8f
-#define DCS_FLIGHT_MAX_STEERING_ANGLE_DEG                      45.0f
+#define DCS_FLIGHT_MAX_STEERING_ANGLE_DEG \
+    DCS_FLIGHT_SERVO_MAX_PULL_ANGLE_DEG
 #define DCS_FLIGHT_LEFT_SERVO_NEUTRAL_US                         556u
 #define DCS_FLIGHT_LEFT_SERVO_MAX_PULL_US                       1000u
-#define DCS_FLIGHT_LEFT_SERVO_ABSOLUTE_MIN_US                    500u
-#define DCS_FLIGHT_LEFT_SERVO_ABSOLUTE_MAX_US                   2500u
+#define DCS_FLIGHT_LEFT_SERVO_ABSOLUTE_MIN_US                    556u
+#define DCS_FLIGHT_LEFT_SERVO_ABSOLUTE_MAX_US                   1000u
 #define DCS_FLIGHT_RIGHT_SERVO_NEUTRAL_US                        556u
 #define DCS_FLIGHT_RIGHT_SERVO_MAX_PULL_US                      1000u
-#define DCS_FLIGHT_RIGHT_SERVO_ABSOLUTE_MIN_US                   500u
-#define DCS_FLIGHT_RIGHT_SERVO_ABSOLUTE_MAX_US                  2500u
+#define DCS_FLIGHT_RIGHT_SERVO_ABSOLUTE_MIN_US                   556u
+#define DCS_FLIGHT_RIGHT_SERVO_ABSOLUTE_MAX_US                  1000u
 
 #endif

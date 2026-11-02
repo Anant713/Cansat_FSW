@@ -1,5 +1,6 @@
 #include "apps/Telemetry.h"
 #include "apps/Cansat.h"
+#include "drivers/Servo.h"
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -149,12 +150,30 @@ static bool team_id_valid(const char *teamId)
     return false;
 }
 
+static bool fresh(bool valid, uint32_t sample_ms, uint32_t now_ms,
+                  uint32_t maximum_age_ms)
+{
+    return valid && (uint32_t)(now_ms - sample_ms) <= maximum_age_ms;
+}
+
 size_t Telemetry_Encode(const Cansat *c, uint8_t *buffer, size_t capacity)
 {
     if (buffer == NULL || capacity < TELEMETRY_BINARY_SIZE ||
         c == NULL || !team_id_valid(c->telemetry.teamId)) return 0U;
     Packet packet = {buffer, capacity, 0U, 0U, true};
     const GNSSData *g = &c->gnss;
+    bool bmpFresh = fresh(c->bmp.valid, c->bmp.timestamp_ms,
+                          c->telemetry.uptimeMs, TELEMETRY_BMP_MAX_AGE_MS);
+    bool bmiFresh = fresh(c->bmi.valid, c->bmi.timestamp_ms,
+                          c->telemetry.uptimeMs, TELEMETRY_BMI_MAX_AGE_MS);
+    bool envFresh = fresh(c->env.valid, c->env.timestamp_ms,
+                          c->telemetry.uptimeMs, TELEMETRY_AHT_MAX_AGE_MS);
+    bool magFresh = fresh(c->mag.valid, c->mag.timestamp_ms,
+                          c->telemetry.uptimeMs, TELEMETRY_MAG_MAX_AGE_MS);
+    bool attitudeFresh = fresh(c->attitude.quaternionValid,
+                               c->attitude.timestampMs,
+                               c->telemetry.uptimeMs,
+                               TELEMETRY_ATTITUDE_MAX_AGE_MS);
     unsigned hour = g->utcTime / 10000U;
     unsigned minute = g->utcTime / 100U % 100U;
     unsigned second = g->utcTime % 100U;
@@ -171,9 +190,9 @@ size_t Telemetry_Encode(const Cansat *c, uint8_t *buffer, size_t capacity)
      * transmitted/logged value; preserve raw height for flight processing. */
     double height = c->bmp.relativeHeightM;
     if (isfinite(height) && height < 0.0) height = 0.0;
-    number(&packet, height, 10, 0, UINT16_MAX, c->bmp.valid && c->bmp.heightValid, 2);
-    number(&packet, c->bmp.pressure, 1, 0, 0xffffff, c->bmp.valid, 3);
-    number(&packet, c->bmp.temperature, 100, INT16_MIN, INT16_MAX, c->bmp.valid, 2);
+    number(&packet, height, 10, 0, UINT16_MAX, bmpFresh && c->bmp.heightValid, 2);
+    number(&packet, c->bmp.pressure, 1, 0, 0xffffff, bmpFresh, 3);
+    number(&packet, c->bmp.temperature, 100, INT16_MIN, INT16_MAX, bmpFresh, 2);
     number(&packet, c->battery.voltage, 1000, 0, UINT16_MAX, c->battery.valid, 2);
     number(&packet, hour, 1, 0, 23, utcValid, 1);
     number(&packet, minute, 1, 0, 59, utcValid, 1);
@@ -184,32 +203,34 @@ size_t Telemetry_Encode(const Cansat *c, uint8_t *buffer, size_t capacity)
     hemisphere(&packet, g->longitudeHemisphere, 'E', 'W', g->longitude, 180, fixValid);
     number(&packet, g->altitude, 10, 0, UINT16_MAX, fixValid && g->altitudeValid, 2);
     number(&packet, g->satellites, 1, 0, UINT8_MAX, g->valid, 1);
-    number(&packet, c->bmi.accelX, 100, INT16_MIN, INT16_MAX, c->bmi.valid, 2);
-    number(&packet, c->bmi.accelY, 100, INT16_MIN, INT16_MAX, c->bmi.valid, 2);
-    number(&packet, c->bmi.accelZ, 100, INT16_MIN, INT16_MAX, c->bmi.valid, 2);
-    number(&packet, c->bmi.gyroX, 10, INT16_MIN, INT16_MAX, c->bmi.valid, 2);
-    number(&packet, c->bmi.gyroY, 10, INT16_MIN, INT16_MAX, c->bmi.valid, 2);
-    number(&packet, c->bmi.gyroZ, 10, INT16_MIN, INT16_MAX, c->bmi.valid, 2);
+    number(&packet, c->bmi.accelX, 100, INT16_MIN, INT16_MAX, bmiFresh, 2);
+    number(&packet, c->bmi.accelY, 100, INT16_MIN, INT16_MAX, bmiFresh, 2);
+    number(&packet, c->bmi.accelZ, 100, INT16_MIN, INT16_MAX, bmiFresh, 2);
+    number(&packet, c->bmi.gyroX, 10, INT16_MIN, INT16_MAX, bmiFresh, 2);
+    number(&packet, c->bmi.gyroY, 10, INT16_MIN, INT16_MAX, bmiFresh, 2);
+    number(&packet, c->bmi.gyroZ, 10, INT16_MIN, INT16_MAX, bmiFresh, 2);
     number(&packet, c->missionState, 1, CANSAT_STATE_LAUNCH_PAD, CANSAT_STATE_TOUCHDOWN, true, 1);
-    number(&packet, c->env.humidity, 1000, 0, 100000, c->env.valid, 3);
+    number(&packet, c->env.humidity, 1000, 0, 100000, envFresh, 3);
     /* Driver gives microtesla: /100 -> gauss, *10000 -> 0.0001 gauss counts. */
-    number(&packet, c->mag.magX, 100, INT16_MIN, INT16_MAX, c->mag.valid, 2);
-    number(&packet, c->mag.magY, 100, INT16_MIN, INT16_MAX, c->mag.valid, 2);
-    number(&packet, c->mag.magZ, 100, INT16_MIN, INT16_MAX, c->mag.valid, 2);
+    number(&packet, c->mag.magX, 100, INT16_MIN, INT16_MAX, magFresh, 2);
+    number(&packet, c->mag.magY, 100, INT16_MIN, INT16_MAX, magFresh, 2);
+    number(&packet, c->mag.magZ, 100, INT16_MIN, INT16_MAX, magFresh, 2);
     number(&packet, g->speed, 100, 0, UINT16_MAX, fixValid && g->speedValid, 2);
     number(&packet, g->course, 100, 0, UINT16_MAX, fixValid && g->courseValid, 2);
     for (unsigned i = 0; i < 4U; ++i)
         number(&packet, c->attitude.quaternion[i], 10000, INT16_MIN, INT16_MAX,
-               c->attitude.quaternionValid, 2);
+               attitudeFresh, 2);
     for (unsigned i = 0; i < 3U; ++i)
         number(&packet, c->attitude.angularVelocity[i], 10, INT16_MIN, INT16_MAX,
-               c->attitude.angularVelocityValid, 2);
+               attitudeFresh && c->attitude.angularVelocityValid, 2);
     integer(&packet, c->actuators.parafoilDeployed, 1);
     number(&packet, c->navigation.targetDistance, 10, 0, UINT16_MAX, c->navigation.targetDistanceValid, 2);
     number(&packet, c->navigation.headingError, 100, INT16_MIN, INT16_MAX, c->navigation.headingErrorValid, 2);
     /* Board convention: servo1 = left, servo2 = right; commands, not feedback. */
-    number(&packet, c->actuators.servo.servo1Angle, 1, 0, 180, c->actuators.servoValid, 1);
-    number(&packet, c->actuators.servo.servo2Angle, 1, 0, 180, c->actuators.servoValid, 1);
+    number(&packet, c->actuators.servo.servo1Angle, 1, SERVO_MIN_ANGLE_DEG,
+           SERVO_MAX_ANGLE_DEG, c->actuators.servoValid, 1);
+    number(&packet, c->actuators.servo.servo2Angle, 1, SERVO_MIN_ANGLE_DEG,
+           SERVO_MAX_ANGLE_DEG, c->actuators.servoValid, 1);
     integer(&packet, c->telemetry.lastReceivedCommand, 1);
     integer(&packet, c->telemetry.commandExecuted, 1);
     integer(&packet, c->telemetry.receivedPacketCount, 2);

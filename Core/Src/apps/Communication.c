@@ -109,6 +109,7 @@ void Communication_Update(Cansat *cansat)
         }
     }
     XBee_Process();
+    if (XBee_GetStatus() == XBEE_FAULT) (void)XBee_Recover();
     uint8_t bytes[COMMUNICATION_RX_BUDGET];
     uint16_t length;
     XBeeResult result = XBee_Read(bytes, sizeof(bytes), &length);

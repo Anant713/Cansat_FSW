@@ -73,6 +73,9 @@ barometric altitude and GNSS navigation, reporting target-relative north/east
 position, ground velocity, height, propagation state, and target distance.
 Both expose their latest inputs, outputs, initialization flags, and counters as
 debugger variables. Commands: `status`, `stream on`, `stream off`, `help`.
+The native integration regression in `Tests/host/run_estimation_tests.ps1` uses
+the real DCS estimator to verify quaternion publication, installed-axis body
+rates, navigation velocities, runtime validity, and stale-IMU invalidation.
 
 `TestXBee` transmits a fixed 153-byte message and lines entered on the USART3
 serial monitor, and displays incoming XBee bytes there. XBee uses UART4 normal

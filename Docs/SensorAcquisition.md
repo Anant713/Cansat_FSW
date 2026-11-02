@@ -30,6 +30,12 @@ startup failure. Acquisition does not attempt automatic reinitialization.
 Inspect the individual I2C driver contexts and their `io.status` in the debugger
 for failures; GNSS exposes its own diagnostics API.
 
+Launch-pad calibration persists only the BMP ground pressure and BMI270 gyro
+biases. AHT20 or magnetometer initialization/calibration failure no longer aborts
+that pair; those sensors remain independently unavailable while acquisition of
+the others continues. A GNSS UART/DMA reception fault is restarted automatically
+from the main loop.
+
 The module owns one set of driver contexts and runs only in main-loop context.
 Initialization is blocking, then reapplies the saved ground-pressure/gyro-bias pair
 after driver defaults are loaded. `SensorAcquisition_Init` only restores values;
@@ -59,8 +65,9 @@ a failed trigger. Tick comparisons handle the 32-bit HAL tick rollover.
 [Communication](Communication.md) now services XBee and sends telemetry when
 enabled. [Logging](Logging.md) stores the same telemetry fields as CSV on the SD card.
 State-machine processing follows acquisition and command service. Estimation/control
-algorithms remain to be implemented. Without a valid saved calibration, relative
-height remains invalid until explicitly calibrated on the launch pad.
+now run between barometric navigation and telemetry/logging. Without a valid saved
+calibration, launch-pad startup uses the documented fixed pressure fallback if the
+BMP itself remains usable.
 
 ## Stored measurement validity
 

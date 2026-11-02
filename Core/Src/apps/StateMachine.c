@@ -40,6 +40,7 @@ static void enter(Cansat *c)
         Switches_HDRM(false);
         status.hdrmActive = false;
         Switches_Buzzer(true);
+        (void)Logging_Write(c); /* Preserve one final row with TOUCHDOWN state. */
         (void)Logging_Stop();
         CameraControl_Stop(&c->camera);
     }

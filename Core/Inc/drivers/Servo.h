@@ -4,9 +4,13 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#define SERVO_MIN_ANGLE_DEG 5.0f
+#define SERVO_MAX_ANGLE_DEG 45.0f
+
 typedef struct
 {
-    /* Requested angles, not measured positions. */
+    /* Requested angles, not measured positions. Servo 1 pulls the left brake
+     * line; servo 2 pulls the right brake line. */
     float servo1Angle;
     float servo2Angle;
 
@@ -17,7 +21,7 @@ typedef struct
 
 bool Servo_Init(void);
 /* Init follows MX_TIM4_Init. It validates 1 MHz counting / 20 ms PWM,
- * selects 90 degrees for both servos and leaves PWM disabled.
+ * selects the 5-degree minimum for both servos and leaves PWM disabled.
  * All calls are single-caller/main-context; TIM4 is reserved for this driver. */
 
 void Servo_Enable(void);
@@ -26,7 +30,7 @@ void Servo_Enable(void);
 void Servo_Disable(void);
 
 void Servo1_SetAngle(float angle);
-/* Finite angles are clamped to [0,180]. NaN/infinity are ignored.
+/* Finite angles are clamped to [5,45] degrees. NaN/infinity are ignored.
  * SetAngles rejects the entire pair if either value is non-finite.
  * Setters also work while disabled; Enable applies the saved angles.
  * Running updates take effect on the next 20 ms timer update. */

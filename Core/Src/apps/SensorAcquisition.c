@@ -81,13 +81,15 @@ bool SensorAcquisition_StartCalibration(Cansat *c)
     if (bmpOK) bmpOK = BMP280_SetCalibration(&bmp, temperatureOffset, pressureOffset);
     if (bmpOK) bmpOK = BMP280_CalibrateGroundPressure(&bmp);
     bool ahtOK = AHT20_Init(&aht, &hi2c2);
-    if (ahtOK) ahtOK = AHT20_SetCalibration(&aht, humidityOffset);
+    if (ahtOK) (void)AHT20_SetCalibration(&aht, humidityOffset);
     bool bmiOK = BMI270_Init(&bmi, &hi2c2, ACQUISITION_BMI_ADDRESS);
     if (bmiOK && imuSaved) bmiOK = BMI270_SetCalibration(&bmi, &imuCalibration);
     bool magOK = IIS2MDC_Init(&mag, &hi2c2);
-    if (magOK && magSaved) magOK = IIS2MDC_SetCalibration(&mag, &magneticCalibration);
+    if (magOK && magSaved) (void)IIS2MDC_SetCalibration(&mag, &magneticCalibration);
     lastHumidityStart = HAL_GetTick() - HUMIDITY_PERIOD_MS;
-    if (!(bmpOK && ahtOK && bmiOK && magOK)) {
+    /* Only BMP ground pressure and BMI gyro bias form the persisted flight
+     * calibration pair. AHT or magnetometer failure must not block launch. */
+    if (!(bmpOK && bmiOK)) {
         (void)restoreCalibration();
         return false;
     }
@@ -209,6 +211,9 @@ bool SensorAcquisition_UpdateGNSS(Cansat *cansat)
 {
     if (cansat == NULL || !gnssInitialized) return false;
     GNSS_Process();
+    GNSSDiagnostics diagnostics;
+    GNSS_GetDiagnostics(&diagnostics);
+    if (!diagnostics.receiving) (void)GNSS_StartReception();
     /* Copy even when false: the driver expires validity independently of the
      * stored coordinates, and fresh GGA with no fix is also a useful snapshot. */
     return GNSS_GetData(&cansat->gnss);

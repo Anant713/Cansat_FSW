@@ -26,6 +26,8 @@ void Control_Update(Cansat *c)
 {
     if (!initialized || c == NULL) return;
     const DcsFlightConfig *config = Estimation_GetFlightConfig();
+    /* parafoilDeployed becomes true only after the complete HDRM pulse, so
+     * extending deployment timing automatically pushes DCS start later. */
     if (!started && c->missionState == CANSAT_STATE_DESCENT_2 &&
         c->actuators.parafoilDeployed) {
         started = dcs_runtime_start(&runtime, &config->runtime, HAL_GetTick());

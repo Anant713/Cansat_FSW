@@ -3,7 +3,7 @@
 #define HDRM_FIRE 10000U
 #endif
 #ifndef HDRM_ON
-#define HDRM_ON 5000U
+#define HDRM_ON 10000U
 #endif
  
 /* Reuse the complete acquisition/logging/telecommand harness. CMake compiles
