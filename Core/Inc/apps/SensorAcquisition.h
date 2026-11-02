@@ -5,6 +5,7 @@
 #define ACQUISITION_PERIOD_MS 10U
 #define CALIBRATION_GYRO_SAMPLES 128U
 #define CALIBRATION_GYRO_TIMEOUT_MS 10000U
+#define STARTUP_FALLBACK_GROUND_PRESSURE_PA 100715.0f
 
 typedef enum {
     SENSOR_CAL_IDLE, SENSOR_CAL_RUNNING, SENSOR_CAL_SUCCESS, SENSOR_CAL_FAILED
@@ -38,6 +39,9 @@ SensorCalibrationStatus SensorAcquisition_GetCalibrationStatus(void);
 /* True when a validated persisted pair is available (not a sensor-health flag). */
 bool SensorAcquisition_HasCalibration(void);
 float SensorAcquisition_GetGroundPressure(void);
+/* Launch-pad degraded mode: installs the fixed backup pressure in RAM after
+ * startup calibration fails. It never overwrites the persisted calibration. */
+bool SensorAcquisition_UseFallbackGroundPressure(Cansat *cansat);
 /* Explicit ground-only bench zero after Init: blocking BMP reference sampling.
  * RAM-only, no gyro calibration or flash write. Failure invalidates BMP height.
  * Flight/recovery must continue using the combined persisted calibration. */

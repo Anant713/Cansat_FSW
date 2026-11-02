@@ -145,6 +145,16 @@ float SensorAcquisition_GetGroundPressure(void)
     return bmp.initialized && bmp.groundPressureValid ? bmp.groundPressurePa : 0.0f;
 }
 
+bool SensorAcquisition_UseFallbackGroundPressure(Cansat *c)
+{
+    if (c == NULL || !bmp.initialized ||
+        !BMP280_SetGroundPressure(&bmp, STARTUP_FALLBACK_GROUND_PRESSURE_PA))
+        return false;
+    /* A conversion may not be ready yet; normal acquisition will refresh it. */
+    (void)SensorAcquisition_UpdateBMP(c);
+    return true;
+}
+
 bool SensorAcquisition_UpdateBMP(Cansat *cansat)
 {
     if (cansat == NULL || !bmp.initialized) return false;

@@ -63,10 +63,6 @@ void App_RunOnce(void)
      * mission state. Auxiliary navigation altitude is updated separately;
      * state-machine height gates read the BMP driver's relative height. */
     BarometricAltitude_Update(&flight_cansat);
-    if (!flight_calibration_init_ok) {
-        flight_cansat.bmp.heightValid = false;
-        flight_cansat.navigation.altitudeValid = false;
-    }
     Estimation_Update(&flight_cansat);
     StateMachine_Update(&flight_cansat);
     Control_Update(&flight_cansat);

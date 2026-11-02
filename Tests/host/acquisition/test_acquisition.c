@@ -73,6 +73,10 @@ bool StateMachine_Init(Cansat *cansat) { (void)cansat; return true; }
 void StateMachine_SetCameraReady(bool ready) { (void)ready; }
 void StateMachine_Update(Cansat *cansat) { (void)cansat; }
 void BarometricAltitude_Update(Cansat *cansat) { (void)cansat; }
+bool Estimation_Init(void) { return true; }
+void Estimation_Update(Cansat *cansat) { (void)cansat; }
+bool Control_Init(void) { return true; }
+void Control_Update(Cansat *cansat) { (void)cansat; }
 void Error_Handler(void) { assert(!"Unexpected Error_Handler"); }
 void CameraControl_Init(CameraState *camera) { assert(camera && !camera->isOn); }
 static bool flightLed;
@@ -403,6 +407,9 @@ static void test_calibration(void)
     reset();
     assert(SensorAcquisition_Init());
     Cansat c; Cansat_Init(&c);
+    assert(SensorAcquisition_UseFallbackGroundPressure(&c));
+    assert(SensorAcquisition_GetGroundPressure() == STARTUP_FALLBACK_GROUND_PRESSURE_PA);
+    assert(!SensorAcquisition_UseFallbackGroundPressure(NULL));
     c.bmp.valid = c.bmp.heightValid = c.env.valid = c.bmi.valid = c.mag.valid = true;
     calibrationStarts = correctionRestores = 0;
     assert(SensorAcquisition_StartCalibration(&c));

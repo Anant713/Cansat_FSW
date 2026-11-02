@@ -173,4 +173,10 @@ Sensor initialization restores saved calibration first. Startup then reads the
 mission journal: on LAUNCH_PAD it calibrates ground pressure and stationary gyro
 biases and waits for the atomic flash save; on airborne/touchdown recovery it
 retains the saved pair. Keep the board stationary throughout launch-pad startup.
-Calibration/recovery failure inhibits height transitions. Command 3 remains a no-op.
+Height transitions depend on each BMP sample's own validity and freshness, not the
+aggregate startup-calibration result. A failure in another sensor therefore cannot
+hold the state machine on the launch pad. A missing or invalid BMP ground reference
+still safely inhibits height transitions. If launch-pad calibration fails, including
+the 10-second stationary-gyro timeout, SensorAcquisition installs **100715 Pa** as a
+RAM-only backup ground reference. The backup is not written over the persisted
+calibration pair. Command 3 remains a no-op.

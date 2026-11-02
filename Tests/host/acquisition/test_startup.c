@@ -6,7 +6,7 @@
 
 static MissionStoreResult journal;
 static uint32_t mission, tick;
-static unsigned starts, updates, missionWrites, refreshes;
+static unsigned starts, updates, missionWrites, refreshes, fallbacks;
 static bool saved, fail;
 static SensorCalibrationStatus status;
 MissionStoreResult MissionStore_Load(uint32_t *out) { *out = mission; return journal; }
@@ -24,6 +24,13 @@ void SensorAcquisition_Update(Cansat *c)
     }
 }
 bool SensorAcquisition_UpdateBMP(Cansat *c) { ++refreshes; c->bmp.heightValid = true; return true; }
+bool SensorAcquisition_UseFallbackGroundPressure(Cansat *c)
+{
+    ++fallbacks;
+    c->bmp.groundPressurePa = STARTUP_FALLBACK_GROUND_PRESSURE_PA;
+    c->bmp.heightValid = true;
+    return true;
+}
 void HAL_Delay(uint32_t ms) { tick += ms; }
 int main(void)
 {
@@ -45,7 +52,8 @@ int main(void)
     assert(!SensorAcquisition_CalibrateAtStartup(&c));
     journal = MISSION_STORE_VALID; mission = 0; fail = true;
     assert(!SensorAcquisition_CalibrateAtStartup(&c));
-    assert(refreshes == 2 && starts == 3);
+    assert(refreshes == 2 && starts == 3 && fallbacks == 1);
+    assert(c.bmp.heightValid && c.bmp.groundPressurePa == STARTUP_FALLBACK_GROUND_PRESSURE_PA);
     assert(!SensorAcquisition_CalibrateAtStartup(NULL));
     puts("Startup calibration: launch-pad completion, recovery, missing calibration and failure passed");
     return 0;
