@@ -1,0 +1,3 @@
+# Preserve the downloaded bytes used by the upstream checksum manifest.
+third_party/Fusion/Fusion/* -text
+third_party/Fusion/LICENSE.md -text

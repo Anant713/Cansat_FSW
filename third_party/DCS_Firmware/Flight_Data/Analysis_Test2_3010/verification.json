@@ -1,0 +1,10 @@
+{
+  "originals_unchanged": true,
+  "gnss_row_count_reconciled": true,
+  "source_checksum_reconstruction": "GNGGA and GNVTG for accepted rows",
+  "speed_units_cross_checked": true,
+  "dmag_is_constant_reference_subtraction": true,
+  "synthetic_circle_known_wind_speed_recovered": true,
+  "synthetic_sphere_known_offset_field_recovered": true,
+  "firmware_modified": false
+}
