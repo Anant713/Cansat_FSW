@@ -27,9 +27,9 @@ set(CMAKE_PROJECT_NAME Documents)
 set(FIRMWARE_APP "flight" CACHE STRING "Firmware application to build")
 set_property(CACHE FIRMWARE_APP PROPERTY STRINGS flight HDRM_drone_no_commands_test HDRM_drone_test test_telecommands test_acquisition_logging test_acquisition_logging_telemetry test_template test_sd test_sd_text test_spi test_sensors test_gnss test_xbee test_camera test_servos test_switches test_battery)
 
-set_property(CACHE FIRMWARE_APP APPEND PROPERTY STRINGS testHILS)
+set_property(CACHE FIRMWARE_APP APPEND PROPERTY STRINGS testHILS testHILS_telemetry_on)
 
-if(FIRMWARE_APP STREQUAL "flight" OR FIRMWARE_APP STREQUAL "testHILS")
+if(FIRMWARE_APP STREQUAL "flight" OR FIRMWARE_APP STREQUAL "testHILS" OR FIRMWARE_APP STREQUAL "testHILS_telemetry_on")
     set(FIRMWARE_SOURCES
         Core/Src/apps/FlightApp.c
         Core/Src/apps/Cansat.c
@@ -41,9 +41,9 @@ if(FIRMWARE_APP STREQUAL "flight" OR FIRMWARE_APP STREQUAL "testHILS")
         Core/Src/apps/BarometricAltitude.c
         Core/Src/apps/CameraControl.c
     )
-    if(FIRMWARE_APP STREQUAL "testHILS")
+    if(FIRMWARE_APP STREQUAL "testHILS" OR FIRMWARE_APP STREQUAL "testHILS_telemetry_on")
         list(REMOVE_ITEM FIRMWARE_SOURCES Core/Src/apps/FlightApp.c)
-        list(APPEND FIRMWARE_SOURCES Tests/testHILS.c Tests/hils/HilsInput.c Tests/hils/HilsBMP.c)
+        list(APPEND FIRMWARE_SOURCES Tests/${FIRMWARE_APP}.c Tests/hils/HilsInput.c Tests/hils/HilsBMP.c)
     endif()
 elseif(FIRMWARE_APP STREQUAL "HDRM_drone_no_commands_test")
     set(FIRMWARE_SOURCES Tests/HDRM_drone_no_commands_test.c Core/Src/apps/Cansat.c
@@ -72,7 +72,7 @@ elseif(FIRMWARE_APP STREQUAL "test_acquisition_logging_telemetry")
 elseif(FIRMWARE_APP STREQUAL "test_spi")
     set(FIRMWARE_SOURCES Tests/testspi.c)
 elseif(FIRMWARE_APP STREQUAL "test_sensors")
-    set(FIRMWARE_SOURCES Tests/test_sensors.c)
+    set(FIRMWARE_SOURCES Tests/test_sensors.c Core/Src/apps/SensorAcquisition.c)
 elseif(FIRMWARE_APP STREQUAL "test_gnss")
     set(FIRMWARE_SOURCES Tests/test_gnss.c)
 elseif(FIRMWARE_APP STREQUAL "test_xbee")
@@ -102,10 +102,11 @@ enable_language(C ASM)
 
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
-if(FIRMWARE_APP STREQUAL "testHILS")
+if(FIRMWARE_APP STREQUAL "testHILS" OR FIRMWARE_APP STREQUAL "testHILS_telemetry_on")
     target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
         -Wl,--wrap=BMP280_Init -Wl,--wrap=BMP280_Read
         -Wl,--wrap=BMP280_CalibrateGroundPressure
+        -Wl,--wrap=SensorAcquisition_CalibrateAtStartup
         -Wl,--wrap=Logging_Write -Wl,--wrap=Communication_SendTelemetry)
 endif()
 set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME "${FIRMWARE_APP}")
@@ -128,6 +129,7 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${FIRMWARE_SOURCES}
+    Core/Src/apps/SensorStartup.c
     Core/Src/drivers/MissionStore.c
     Core/Src/drivers/MissionStore_HAL.c
     Core/Src/drivers/CalibrationStore.c

@@ -14,12 +14,22 @@ static bool saved, finishCalibration;
 static uint8_t rx[32];
 static uint16_t rxLength;
 static char output[16000];
+static bool ledOutput;
+static ServoData startupServo;
+bool Servo_Init(void) { startupServo = (ServoData){0}; return true; }
+void Servo_SetAngles(float a, float b) { assert(a == 0 && b == 0); startupServo.servo1Angle = a; startupServo.servo2Angle = b; }
+void Servo_Enable(void) { startupServo.enabled = true; }
+bool Servo_GetData(ServoData *s) { *s = startupServo; return true; }
+void Switches_LED(bool enabled) { ledOutput = enabled; }
 #ifdef TEST_HDRM_DRONE
 static bool hdrmOutput;
 static unsigned hdrmRises;
 bool Switches_Init(void) { hdrmOutput = false; return true; }
 void Switches_HDRM(bool enabled) { hdrmOutput = enabled; if (enabled) ++hdrmRises; }
-void Switches_Update(SwitchState *state) { state->hdrm = hdrmOutput; }
+void Switches_Update(SwitchState *state) { state->hdrm = hdrmOutput; state->led = ledOutput; }
+#else
+bool Switches_Init(void) { ledOutput = false; return true; }
+void Switches_Update(SwitchState *state) { state->led = ledOutput; }
 #endif
 uint32_t HAL_GetTick(void) { return tick; }
 bool Console_Init(void) { return true; }
@@ -39,6 +49,8 @@ ConsoleLineResult Console_ReadLine(char *s, size_t capacity)
 MissionStoreResult MissionStore_Load(uint32_t *payload) { *payload = 0; return MISSION_STORE_EMPTY; }
 bool MissionStore_Save(uint32_t payload) { assert(payload == 0); ++missionWrites; return true; }
 bool SensorAcquisition_Init(void) { return true; }
+bool SensorAcquisition_CalibrateAtStartup(Cansat *c)
+{ assert(c); saved = true; calibration = SENSOR_CAL_SUCCESS; return true; }
 void SensorAcquisition_Update(Cansat *c)
 {
     ++acquisitions;
@@ -91,13 +103,11 @@ int main(void)
     assert(strstr(output, "XBee RAW RX (3 bytes): A5 02 5A"));
     assert(transmissions == 1 && rows == 2 && strstr(output, "telemetry OFF"));
     receive(cal, 3);
-    assert(calibrationStarts == 1 && strstr(output, "Calibration IN PROGRESS"));
-    receive(cal, 3); assert(calibrationStarts == 1);
-    finishCalibration = true; tick += ACQUISITION_PERIOD_MS; App_RunOnce();
-    assert(test_telecommands_data.telemetry.commandExecuted && strstr(output, "Calibration SUCCESS"));
-    assert(strstr(output, "ground=101234.00"));
-    finishCalibration = false; receive(cal, 3); calibration = SENSOR_CAL_FAILED; App_RunOnce();
-    assert(!test_telecommands_data.telemetry.commandExecuted && strstr(output, "Calibration FAILED"));
+    receive(cal, 3);
+    assert(calibrationStarts == 0 && strstr(output, "Calibration command ignored"));
+    assert(saved && calibration == SENSOR_CAL_SUCCESS);
+    assert(!test_telecommands_data.telemetry.commandExecuted);
+    assert(test_telecommands_data.telemetry.lastExecutedCommand == 2);
     output[0] = 0;
     const uint8_t joined[] = {0xa5, 1, 0x5a, 0xa5, 2, 0x5a};
     receive(joined, sizeof(joined));

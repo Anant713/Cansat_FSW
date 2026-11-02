@@ -1,5 +1,39 @@
 # TestHILS: pressure-driven mission testing
 
+## Alternate instance: telemetry ON by default
+
+Use **TestHILSTelemetryOn** to run HILS without needing any ground commands:
+
+```powershell
+cmake --preset TestHILSTelemetryOn
+cmake --build --preset TestHILSTelemetryOn
+```
+
+Flash `build/TestHILSTelemetryOn/testHILS_telemetry_on.elf`.
+Its entry point is `Tests/testHILS_telemetry_on.c`; it reuses the same HILS harness
+and Python GUI. Telemetry starts enabled after XBee initialization and is scheduled
+every 500 ms. ON/OFF commands still work: the default is set only once per boot,
+so OFF stays effective until ON or an MCU reset. Command 3 remains a received,
+reported no-op and never starts calibration or writes flash.
+
+Stream constant 0 m pressure with the real board stationary. Startup calibration
+automatically begins when the stable pressure window is available, saving ground
+pressure and gyro biases together. No calibration command is needed. Before a
+valid pressure/reference exists, telemetry uses the usual unavailable-value encoding.
+Blocking startup calibration can briefly pause transmission. Airborne/touchdown
+recovery retains the saved calibration. LED-on and servo-at-0 startup are unchanged.
+
+The original **TestHILS** target remains available with telemetry OFF by default.
+In the instructions below, skip the Telemetry ON step for TestHILSTelemetryOn;
+after reset this alternate target again defaults to ON. Both use the same GUI.
+
+`Tests/testHILS.c` directly includes the current `Core/Src/apps/FlightApp.c`, rather
+than maintaining a separate copy of its startup and loop. Both HILS variants inherit
+the LED-on startup, enabled 0-degree servos, calibration/recovery policy, failure
+checks and mission processing. Launch-pad calibration is deferred only until the PC
+supplies a stable pressure window; it then calls the same startup calibration and
+flash-save implementation. Airborne recovery uses that implementation immediately.
+
 `Tests/testHILS.c` runs the existing **FlightApp loop**, including sensor acquisition,
 ground commands, the state machine, camera control, telemetry and SD logging.
 The PC supplies BMP pressure and temperature over the existing USART3 console.
@@ -8,8 +42,8 @@ Mission decisions are made on the MCU. The GUI does not predict or force states.
 **This firmware operates real camera, HDRM and buzzer outputs and writes real
 mission/calibration flash records.** Use an indicator/test load for the initial
 HDRM run. A saved DESCENT_2 state can activate HDRM immediately on startup.
-Servo PWM stays disabled, matching FlightApp; estimation/control is not implemented
-by this test. The separate drone test's 90-degree servo behavior is not imported.
+The LED turns on and both servos are PWM-enabled at 0 degrees during startup,
+as in the other combined tests. Estimation/control is not implemented by this test.
 
 ## What is simulated
 
@@ -87,14 +121,16 @@ verify radio packet contents, without sharing a COM port between applications.
 
 1. Check the displayed recovered state. For a new scenario click **New mission**.
    This explicitly appends LAUNCH_PAD, clears mission timers/peak, switches outputs
-   off and starts a new SD log. It retains calibration. It is a test-console
+   off and starts a new SD log. The next stable ground stream starts calibration
+   and replaces the saved pair on success. It is a test-console
    operation, not an additional flight telecommand. A running calibration blocks it.
 2. Set Height = **0**, Noise = **0**, and ground pressure = **101325 Pa** (or your
    chosen reference). Click **Stream / resume**. Wait at least **2 seconds**.
    If calibration exists, the GUI automatically adopts the MCU's recovered ground
    pressure on connection and whenever that value changes. You can edit it afterward.
-3. Keep the real board stationary. Click **3: Calibrate sensors**. Observe command
-   RECEIVED → PENDING → FINISHED with `ok=1`, calibration SUCCESS and `saved=1`.
+3. Keep the real board stationary. Calibration starts automatically when the stable
+   ground window is available. Wait for `startup_calibration` with `ok=1`, calibration
+   SUCCESS and `saved=1`. Command 3 is temporarily a no-op (received but not executed).
    Ground pressure is averaged from the last 16 valid simulated samples, spanning
    at least 1.4 s with no gap over 1 s and pressure spread no more than 50 Pa.
    This replaces the physical BMP's settling/read loop. BMI calibration and the
@@ -118,8 +154,8 @@ Expected sequence with the current state-machine macros:
 
 Values are controlled by `Core/Inc/apps/StateMachine.h`. Peak increases only in
 ASCENT. Camera timing macros are in `CameraControl.h`. Ground-command processing
-continues in every state. Calibration is allowed only on LAUNCH_PAD with healthy
-mission persistence; telemetry ON/OFF work independently of state.
+continues in every state. Automatic startup calibration runs only on LAUNCH_PAD
+with healthy mission persistence; telemetry ON/OFF work independently of state.
 
 ## Noise, dropout and manual scenarios
 

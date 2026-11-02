@@ -1,6 +1,7 @@
 #include "App.h"
 #include "main.h"
 #include "Console.h"
+#include "CombinedTestOutputs.h"
 #include "apps/Cansat.h"
 #include "apps/SensorAcquisition.h"
 #include "apps/Communication.h"
@@ -8,6 +9,7 @@
 #include "apps/StateMachine.h"
 #include "drivers/MissionStore.h"
 #include "drivers/XBee.h"
+#include "drivers/Switches.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -19,6 +21,7 @@ const StateMachineStatus *StateMachine_GetStatus(void) { return &benchMission; }
 
 Cansat test_telecommands_data;
 bool test_telecommands_sensors_ok, test_telecommands_xbee_ok;
+bool test_telecommands_calibration_ok;
 uint32_t test_telecommands_logs, test_telecommands_log_errors;
 uint32_t test_telecommands_tx_accepted, test_telecommands_tx_errors;
 static uint32_t lastAcquisition, lastTelemetry, lastLog, lastReport;
@@ -55,7 +58,7 @@ static void commandEvent(GroundCommand id, CommandEvent event, bool success)
     if (event == COMMAND_RECEIVED) {
         Console_Printf("RX command %u: %s\r\n", (unsigned)id, commandName(id));
         if (id == COMMAND_CALIBRATE_SENSORS)
-            Console_Write("Calibration requested: keep stationary; initialization/ground sampling may take several seconds.\r\n");
+            Console_Write("Calibration command disabled: startup performs calibration and saves it to flash.\r\n");
     } else if (event == COMMAND_PENDING) {
         Console_Write("Calibration IN PROGRESS: collecting gyro samples.\r\n");
     } else if (id == COMMAND_CALIBRATE_SENSORS) {
@@ -63,7 +66,7 @@ static void commandEvent(GroundCommand id, CommandEvent event, bool success)
             Console_Printf("Calibration SUCCESS: gyro biases and ground pressure saved to flash; ground=%.2f Pa.\r\n",
                            (double)SensorAcquisition_GetGroundPressure());
         else
-            Console_Write("Calibration FAILED/rejected: check sensor motion/I/O, timeout or flash status.\r\n");
+            Console_Write("Calibration command ignored (no sensor changes or flash writes).\r\n");
     } else {
         Console_Printf("Command %u %s: telemetry %s. Logging continues.\r\n", (unsigned)id,
                        success ? "SUCCESS" : "FAILED",
@@ -95,6 +98,8 @@ void App_Init(void)
 {
     (void)Console_Init();
     Cansat_Init(&test_telecommands_data); /* Bench context stays LAUNCH_PAD. */
+    if (!CombinedTestOutputs_Init(&test_telecommands_data))
+        Console_Write("Startup LED/servo initialization FAILED.\r\n");
     uint32_t missionPayload;
     MissionStoreResult mission = MissionStore_Load(&missionPayload);
     benchMission.persistenceOK = mission == MISSION_STORE_VALID ||
@@ -103,6 +108,10 @@ void App_Init(void)
         Console_Write("Mission journal invalid/full: calibration commands will be rejected.\r\n");
     if (!Logging_Init()) Console_Write("SD logging initialization FAILED.\r\n");
     test_telecommands_sensors_ok = SensorAcquisition_Init();
+    Console_Write("Startup calibration/recovery: keep stationary on the launch pad.\r\n");
+    test_telecommands_calibration_ok = SensorAcquisition_CalibrateAtStartup(&test_telecommands_data);
+    Console_Write(test_telecommands_calibration_ok ? "Startup calibration ready (saved/restored).\r\n" :
+                                 "Startup calibration/recovery FAILED.\r\n");
     Console_Printf("Sensors=%s calibration restored=%u ground=%.2f Pa\r\n",
         test_telecommands_sensors_ok ? "OK" : "ERROR", (unsigned)SensorAcquisition_HasCalibration(),
         (double)SensorAcquisition_GetGroundPressure());

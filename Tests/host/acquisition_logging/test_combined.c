@@ -15,6 +15,17 @@ static bool ready;
 static const char *pendingCommand;
 static char consoleOutput[4096];
 static void advance(uint32_t ms);
+#ifndef TEST_DRONE_NO_COMMANDS
+static ServoData startupServo;
+static bool startupLed;
+bool Switches_Init(void) { startupLed = false; return true; }
+void Switches_LED(bool on) { startupLed = on; }
+void Switches_Update(SwitchState *s) { s->led = startupLed; }
+bool Servo_Init(void) { startupServo = (ServoData){0}; return true; }
+void Servo_SetAngles(float a, float b) { assert(a == 0 && b == 0); startupServo.servo1Angle = a; startupServo.servo2Angle = b; }
+void Servo_Enable(void) { startupServo.enabled = true; }
+bool Servo_GetData(ServoData *s) { *s = startupServo; return true; }
+#endif
 #if TEST_WITH_TELEMETRY
 static unsigned telemetryCalls, communicationUpdates;
 bool Communication_Init(void) { return true; }
@@ -46,6 +57,10 @@ ConsoleLineResult Console_ReadLine(char *s, size_t capacity)
     strcpy(s, pendingCommand); pendingCommand = NULL; return CONSOLE_LINE_READY;
 }
 bool SensorAcquisition_Init(void) { return true; }
+#ifndef TEST_DRONE_NO_COMMANDS
+bool SensorAcquisition_CalibrateAtStartup(Cansat *c) { assert(c); return true; }
+float SensorAcquisition_GetGroundPressure(void) { return 101325.0f; }
+#endif
 void SensorAcquisition_Update(Cansat *c)
 {
     ++acquireCalls; advance(2);

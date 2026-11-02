@@ -71,8 +71,8 @@ success. A committed touchdown is recovered as touchdown on the next boot.
 
 `StateMachine_BeginNewMission()` is an explicit ground-only reset to launch pad,
 appended to the journal; it is never called automatically and does not erase
-calibration. Explicitly recalibrate at a new launch location. Reboot afterward to
-start a new logging session. The future ground-command parser can invoke this
+calibration. Reboot on the launch pad afterward to calibrate ground pressure and
+gyro during startup and begin a new log. The future ground-command parser can invoke this
 operation when the command is defined. Preserve sector 11 when reflashing if
 recovery is desired; programmer mass erase destroys the journal. Bench erase of
 sector 11 resets the journal and must not be done during a mission.
@@ -156,3 +156,16 @@ For pressure profiles sent from a PC over the console UART, with the real flight
 loop, commands, camera/HDRM outputs, SD logging and flash recovery, see
 [TestHILS setup and usage](TestHILS.md). Its GUI displays the MCU-reported state.
 
+
+## Main flight startup outputs and calibration
+
+FlightApp turns the LED on and enables both servo PWM channels at 0 degrees before
+SD/sensor startup. A failed servo initialization or PWM start enters Error_Handler.
+The output snapshot is copied into Cansat. These outputs also apply to both HILS
+variants, which reuse FlightApp directly.
+
+Sensor initialization restores saved calibration first. Startup then reads the
+mission journal: on LAUNCH_PAD it calibrates ground pressure and stationary gyro
+biases and waits for the atomic flash save; on airborne/touchdown recovery it
+retains the saved pair. Keep the board stationary throughout launch-pad startup.
+Calibration/recovery failure inhibits height transitions. Command 3 remains a no-op.

@@ -342,41 +342,19 @@ static void test_calibration_command(void)
     Cansat c;
     Cansat_Init(&c);
     assert(Communication_Init());
-    const uint8_t cal[] = {0xa5, 3, 0x5a}, off[] = {0xa5, 2, 0x5a};
-    missionStatus.persistenceOK = calibrationStartOK = true;
+    const uint8_t cal[] = {0xa5, 3, 0x5a};
     calibrationStarts = 0;
-    c.missionState = CANSAT_STATE_ASCENT;
-    Communication_ProcessCommand(&c, cal, 3);
-    assert(calibrationStarts == 0 && !c.telemetry.commandExecuted);
-    c.missionState = CANSAT_STATE_LAUNCH_PAD;
-    Communication_ProcessCommand(&c, cal, 3);
-    Communication_ProcessCommand(&c, cal, 3);
-    assert(calibrationStarts == 1 && !c.telemetry.commandExecuted);
-    Communication_Update(&c);
-    assert(!c.telemetry.commandExecuted);
-    calibrationResult = SENSOR_CAL_SUCCESS;
-    Communication_Update(&c);
-    assert(c.telemetry.commandExecuted && c.telemetry.lastExecutedCommand == 3);
-    Communication_Update(&c); assert(c.telemetry.commandExecuted);
-    Communication_ProcessCommand(&c, cal, 3);
-    Communication_ProcessCommand(&c, off, 3);
-    calibrationResult = SENSOR_CAL_SUCCESS;
-    Communication_Update(&c);
-    assert(c.telemetry.lastReceivedCommand == 2 && c.telemetry.commandExecuted);
-    assert(c.telemetry.lastExecutedCommand == 3 && !c.telemetry.enabled);
-    Communication_ProcessCommand(&c, off, 3);
-    Communication_ProcessCommand(&c, cal, 3);
-    calibrationResult = SENSOR_CAL_FAILED;
-    Communication_Update(&c);
-    assert(!c.telemetry.commandExecuted && c.telemetry.lastExecutedCommand == 2);
-    Communication_ProcessCommand(&c, cal, 3);
-    calibrationResult = SENSOR_CAL_FAILED; /* Includes flash commit failure. */
-    Communication_Update(&c);
-    assert(!c.telemetry.commandExecuted && c.telemetry.lastExecutedCommand == 2);
-    calibrationStartOK = false;
-    Communication_ProcessCommand(&c, cal, 3);
-    assert(!c.telemetry.commandExecuted);
-    puts("Calibration gating, async completion, duplicate requests, failure and command association passed");
+    for (unsigned state = 0; state <= 4; ++state) {
+        c.missionState = (CansatMissionState)state;
+        c.telemetry.lastExecutedCommand = 2;
+        Communication_ProcessCommand(&c, cal, sizeof(cal));
+        calibrationResult = SENSOR_CAL_SUCCESS;
+        Communication_Update(&c);
+        assert(calibrationStarts == 0);
+        assert(c.telemetry.lastReceivedCommand == 3 && !c.telemetry.commandExecuted);
+        assert(c.telemetry.lastExecutedCommand == 2);
+    }
+    puts("Calibration command is a no-op in every mission state; reception still counted");
 }
 
 int main(void)

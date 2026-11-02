@@ -5,6 +5,9 @@
 #include "drivers/AHT20.h"
 #include "drivers/bmi270.h"
 #include "drivers/IIS2MDC.h"
+#include "apps/SensorAcquisition.h"
+#include "apps/Cansat.h"
+#include "drivers/CalibrationStore.h"
 #include <string.h>
 
 /* Flash this separate test application to check actual wiring and data.
@@ -22,6 +25,7 @@ volatile AHT20Data sensor_aht_data;
 volatile BMI270Data sensor_bmi_data;
 volatile IIS2MDCData sensor_mag_data;
 volatile bool sensor_init_ok[4]; /* BMP, AHT, BMI, IIS */
+volatile bool sensor_ground_calibration_ok;
 volatile SensorStatus sensor_status[4];
 volatile uint32_t sensor_sample_count[4];
 /* Set true in debugger only after placing the board at rest. */
@@ -55,6 +59,7 @@ static void report(void)
     if (sensor_bmp_data.valid && sensor_bmp_data.heightValid)
         Console_Printf("BMP280 ground=%.2f Pa relative height=%.2f m\r\n",
             (double)sensor_bmp_data.groundPressurePa, (double)sensor_bmp_data.relativeHeightM);
+    else Console_Write("BMP280 relative height unavailable (no valid pressure/reference).\r\n");
     if (sensor_aht_data.valid)
         Console_Printf("AHT20 humidity=%.2f %%RH sample_ms=%lu count=%lu\r\n",
             (double)sensor_aht_data.humidity, (unsigned long)sensor_aht_data.timestamp_ms,
@@ -86,14 +91,32 @@ void App_Init(void)
 {
     (void)Console_Init();
     Console_Write("Sensor test initializing...\r\n");
+    Console_Write("Startup ground/gyro calibration: keep board stationary. Airborne boots restore flash.\r\n");
+    Cansat startup = {0};
+    (void)SensorAcquisition_Init();
+    bool startupOK = SensorAcquisition_CalibrateAtStartup(&startup);
+    SensorCalibrationRecord stored;
+    bool haveCalibration = CalibrationStore_Load(&stored) == CAL_STORE_VALID;
+    Console_Write(startupOK ? "Startup calibration saved/restored OK.\r\n" : "Startup calibration FAILED.\r\n");
     /* Independent attempts: a missing device does not hide results from others. */
     sensor_init_ok[0] = BMP280_Init(&sensor_bmp, &hi2c2, TEST_BMP_ADDRESS);
-    /* This standalone bench test explicitly establishes its local zero. */
-    if (sensor_init_ok[0]) sensor_init_ok[0] = BMP280_CalibrateGroundPressure(&sensor_bmp);
+    /* Local driver instances use the same flash tuple as application startup. */
+    sensor_ground_calibration_ok = sensor_init_ok[0] && haveCalibration &&
+        BMP280_SetGroundPressure(&sensor_bmp, stored.groundPressurePa);
+    if (sensor_ground_calibration_ok)
+        Console_Printf("Ground reference restored: P0=%.2f Pa; height is relative to its launch location.\r\n",
+                       (double)sensor_bmp.groundPressurePa);
+    else Console_Write("Ground calibration FAILED; pressure reads continue, height unavailable.\r\n");
     sensor_init_ok[1] = AHT20_Init(&sensor_aht, &hi2c2);
     sensor_init_ok[2] = BMI270_Init(&sensor_bmi, &hi2c2, TEST_BMI_ADDRESS);
     sensor_init_ok[3] = IIS2MDC_Init(&sensor_mag, &hi2c2);
-    if (sensor_init_ok[2]) sensor_init_ok[2] = BMI270_SetCalibration(&sensor_bmi, &saved_imu);
+    sensor_saved_imu = saved_imu;
+    if (haveCalibration)
+        memcpy(sensor_saved_imu.gyro_bias_dps, stored.gyroBiasDps, sizeof(stored.gyroBiasDps));
+    if (sensor_init_ok[2]) sensor_init_ok[2] = BMI270_SetCalibration(&sensor_bmi, &sensor_saved_imu);
+    Console_Printf("Gyro biases applied XYZ=%.5f,%.5f,%.5f deg/s saved=%u\r\n",
+        (double)sensor_saved_imu.gyro_bias_dps[0], (double)sensor_saved_imu.gyro_bias_dps[1],
+        (double)sensor_saved_imu.gyro_bias_dps[2], (unsigned)haveCalibration);
     sensor_status[0] = sensor_bmp.io.status;
     sensor_status[1] = sensor_aht.io.status;
     sensor_status[2] = sensor_bmi.io.status;

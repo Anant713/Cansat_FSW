@@ -49,6 +49,7 @@ void App_Init(void)
 {
     bool switchesOK = Switches_Init(); /* Drive HDRM low before SD/sensor startup. */
     HDRM_BaseInit();
+    switchesOK = switchesOK && test_telecommands_calibration_ok;
     hdrm_drone_phase = switchesOK ? HDRM_WAITING : HDRM_DISABLED;
     hdrm_drone_fired_ms = hdrm_drone_off_ms = 0;
     test_telecommands_data.actuators.parafoilDeployed = false;

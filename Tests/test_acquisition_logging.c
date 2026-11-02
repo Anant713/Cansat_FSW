@@ -1,6 +1,7 @@
 #include "App.h"
 #include "main.h"
 #include "Console.h"
+#include "CombinedTestOutputs.h"
 #include "apps/Cansat.h"
 #include "apps/SensorAcquisition.h"
 #include "apps/Logging.h"
@@ -29,6 +30,7 @@ typedef struct {
 Cansat test_acquisition_logging_data;
 TimingStats test_acquisition_time, test_logging_time, test_loop_period, test_loop_work;
 bool test_acquisition_init_ok, test_logging_init_ok, test_timing_clock_ok;
+bool test_calibration_init_ok;
 uint32_t test_acquisition_init_ms, test_logging_init_ms;
 uint32_t test_log_successes, test_log_failures, test_acquisition_overruns, test_logging_overruns;
 uint32_t test_timing_invalid_intervals;
@@ -81,11 +83,20 @@ void App_Init(void)
 {
     (void)Console_Init();
     Cansat_Init(&test_acquisition_logging_data);
+    if (!CombinedTestOutputs_Init(&test_acquisition_logging_data))
+        Console_Write("Startup LED/servo initialization FAILED.\r\n");
     uint32_t start = HAL_GetTick();
     test_logging_init_ok = Logging_Init(); /* SD startup before GNSS reception. */
     test_logging_init_ms = HAL_GetTick() - start;
     start = HAL_GetTick();
     test_acquisition_init_ok = SensorAcquisition_Init();
+    Console_Write("Startup ground/gyro calibration: keep stationary at the launch location.\r\n");
+    test_calibration_init_ok = SensorAcquisition_CalibrateAtStartup(&test_acquisition_logging_data);
+    if (test_calibration_init_ok)
+        Console_Printf("Calibration saved/restored: P0=%.2f Pa; height is launch-relative.\r\n",
+                       (double)SensorAcquisition_GetGroundPressure());
+    else
+        Console_Write("Startup calibration/recovery FAILED.\r\n");
     test_acquisition_init_ms = HAL_GetTick() - start;
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
     DWT->CYCCNT = 0;

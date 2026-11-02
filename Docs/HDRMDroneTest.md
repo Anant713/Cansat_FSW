@@ -22,7 +22,9 @@ the entire timer and permits another pulse; this one-shot is RAM-only.
 Acquisition, CSV logging, telemetry and the three XBee ground commands run as in
 [TelecommandTest.md](TelecommandTest.md). Telemetry initially stays OFF until
 `A5 01 5A`; `A5 02 5A` turns telemetry off without affecting the HDRM timer or SD
-logging. `A5 03 5A` performs ground calibration and writes calibration flash.
+logging. `A5 03 5A` is a no-op. Startup performs ground/gyro calibration and flash
+save on LAUNCH_PAD, or restores the existing pair on airborne/touchdown recovery.
+Calibration failure prevents arming the HDRM timer.
 The test keeps the bench mission context at LAUNCH_PAD and does not run flight
 transitions, camera actions or guidance. Perform calibration while stationary.
 
@@ -38,6 +40,5 @@ logging and enabled telemetry continue after firing; the pulse does not repeat.
 
 Timing uses wrap-safe HAL tick checks before and after each loop. It is **nominal
 software timing**, not a hardware-enforced pulse limit: synchronous sensor/SD
-operations, console writes or calibration can delay firing or extend ON time.
-In particular, avoid requesting blocking calibration during the pulse if its
-duration matters. The console reports actual ON duration for verification.
+operations or console writes can delay firing or extend ON time. Calibration
+finishes before arming. The console reports actual ON duration for verification.

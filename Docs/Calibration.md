@@ -1,9 +1,13 @@
 # Sensor calibration and reboot recovery
 
-`CALIBRATE_SENSORS` (`A5 03 5A`) is a launch-pad operation. Keep the CanSat stationary
-at the launch site. The command handler starts `SensorAcquisition_StartCalibration`;
-SensorAcquisition owns driver calls, completion checking, and calibration persistence.
-The state machine owns only mission-state/deployment persistence.
+Calibration now runs automatically during application startup. Keep the CanSat
+stationary at the launch site. After `SensorAcquisition_Init`, call
+`SensorAcquisition_CalibrateAtStartup`: it checks the saved mission state, runs the
+combined ground/gyro calibration on LAUNCH_PAD and waits for its flash commit.
+`CALIBRATE_SENSORS` (`A5 03 5A`) is temporarily a no-op: the execution call is
+commented out. Reception is still counted, `commandExecuted` stays false and the
+last successful command is unchanged. It neither calibrates nor writes flash.
+SensorAcquisition owns calibration persistence; the state machine owns mission records.
 
 ## Calibration
 
@@ -25,10 +29,11 @@ The state machine owns only mission-state/deployment persistence.
    earlier valid pair, height stays invalid and gyro software bias defaults to zero.
    Failed hardware initialization is not magically repaired by this rollback.
 
-The initial setup/ground averaging is blocking for several seconds. Gyro sampling
-is asynchronous. The BMP sample's heightValid is suppressed while calibration is
+The startup wrapper blocks for ground averaging and then services gyro sampling
+until success/failure (128 samples, 10-second gyro timeout). The BMP sample's heightValid is suppressed while calibration is
 running so a candidate reference cannot drive transitions or appear as valid
-telemetry altitude before commit. Duplicate pending requests do not restart it.
+telemetry altitude before commit. Flight height gates remain inhibited if startup
+calibration/recovery fails. Main-loop telemetry/logging start after this operation.
 
 ## Reboot
 
@@ -37,14 +42,16 @@ saved pressure with `BMP280_SetGroundPressure` and the three biases through
 `BMI270_GetCalibration`/`BMI270_SetCalibration`. Driver initialization must come
 before applying the values because it clears the device context.
 
-This happens on every reboot, including LAUNCH_PAD and airborne recovery. It never
-samples a new ground zero at startup. Sensor initialization and mission-state
-recovery can therefore remain in the current startup order: neither depends on
-an automatic calibration. `SensorAcquisition_HasCalibration` reports whether a
-validated saved pair exists, independently of hardware health.
+Driver initialization restores any saved pair first. The startup wrapper then
+recalibrates and appends a replacement pair on LAUNCH_PAD (including launch-pad
+reboots). On ASCENT, DESCENT_1, DESCENT_2 or TOUCHDOWN it retains the restored pair,
+without sampling a new zero or writing calibration. It reads mission flash before
+deciding, without invoking state-entry actuators. An empty journal is seeded with
+LAUNCH_PAD before calibration. Invalid mission storage blocks startup calibration.
+`SensorAcquisition_HasCalibration` reports saved-pair availability, not sensor health.
 
 Without a complete valid record, pressure readings remain available but relative
-height is invalid; wait for an explicit calibration command on the launch pad.
+height is invalid on airborne recovery; perform a ground startup calibration.
 An invalid/torn record with no earlier valid pair also makes sensor initialization
 report failure. A valid earlier pair is used if a later append is interrupted.
 Legacy mission records containing only rounded pressure are not a complete pair

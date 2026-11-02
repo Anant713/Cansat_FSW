@@ -78,7 +78,9 @@ XBeeStatus XBee_GetStatus(void)
     if (fault) return XBEE_FAULT;
     if (phase != RUNNING) return XBEE_BOOTING;
     if (tx_busy) return XBEE_TRANSMITTING;
-    return XBee_IsAwake() ? XBEE_READY : XBEE_ASLEEP;
+    /* Temporarily ignore ON/SLEEP for readiness. Keep raw pin diagnostics. */
+    /* return XBee_IsAwake() ? XBEE_READY : XBEE_ASLEEP; */
+    return XBEE_READY;
 }
 
 XBeeResult XBee_Send(const uint8_t *data, uint16_t length)
@@ -87,7 +89,8 @@ XBeeResult XBee_Send(const uint8_t *data, uint16_t length)
     if (port == NULL) return XBEE_NOT_READY;
     if (fault) return XBEE_IO_ERROR;
     if (tx_busy) return XBEE_BUSY;
-    if (phase != RUNNING || !XBee_IsAwake()) return XBEE_NOT_READY;
+    if (phase != RUNNING) return XBEE_NOT_READY;
+    /* Temporarily disabled: if (!XBee_IsAwake()) return XBEE_NOT_READY; */
     memcpy(dma_tx, data, length);
     /* Error/TC IRQs must not race the busy flag or HAL's initial setup. */
     uint32_t p = lock();

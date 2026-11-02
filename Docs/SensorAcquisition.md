@@ -32,7 +32,10 @@ for failures; GNSS exposes its own diagnostics API.
 
 The module owns one set of driver contexts and runs only in main-loop context.
 Initialization is blocking, then reapplies the saved ground-pressure/gyro-bias pair
-after driver defaults are loaded. It never measures a new ground zero at boot.
+after driver defaults are loaded. `SensorAcquisition_Init` only restores values;
+the caller then invokes `SensorAcquisition_CalibrateAtStartup`, which calibrates
+ground pressure and gyro on LAUNCH_PAD and waits for the atomic flash save.
+Airborne boots retain the restored pair instead of measuring a new ground zero.
 It uses I2C2, ADC1 through the battery driver, and USART6 at GNSS_EXPECTED_BAUD
 (115200 baud). The BMP/BMI addresses default to `0x77`/`0x68`, matching the existing
 sensor test. Adjust the constants at the top of `SensorAcquisition.c` to match

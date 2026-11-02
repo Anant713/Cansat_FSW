@@ -13,6 +13,8 @@ I2C_HandleTypeDef hi2c2;
 UART_HandleTypeDef huart6;
 extern Cansat flight_cansat;
 extern bool flight_sensor_init_ok;
+/* Startup policy has its own tests; this suite isolates acquisition/scheduling. */
+bool SensorAcquisition_CalibrateAtStartup(Cansat *c) { return c != NULL; }
 
 enum { BMP, AHT, BMI, MAG, BATTERY, GNSS, DEVICE_COUNT };
 static uint32_t tick;
@@ -71,11 +73,17 @@ bool StateMachine_Init(Cansat *cansat) { (void)cansat; return true; }
 void StateMachine_Update(Cansat *cansat) { (void)cansat; }
 void BarometricAltitude_Update(Cansat *cansat) { (void)cansat; }
 void Error_Handler(void) { assert(!"Unexpected Error_Handler"); }
-bool Switches_Init(void) { return true; }
-bool Servo_Init(void) { return true; }
+static bool flightLed;
+static ServoData flightServo;
+bool Switches_Init(void) { flightLed = false; return true; }
+void Switches_LED(bool on) { flightLed = on; }
+void Switches_Update(SwitchState *s) { s->led = flightLed; }
+bool Servo_Init(void) { flightServo = (ServoData){.servo1Angle = 90, .servo2Angle = 90}; return true; }
+void Servo_SetAngles(float a, float b) { flightServo.servo1Angle = a; flightServo.servo2Angle = b; }
+void Servo_Enable(void) { flightServo.enabled = true; }
 bool Servo_GetData(ServoData *data)
 {
-    *data = (ServoData){.servo1Angle = 90, .servo2Angle = 90};
+    *data = flightServo;
     return true;
 }
 /* Communication behavior is exercised in its own host suite. */
@@ -348,6 +356,9 @@ static void test_flight_integration(void)
     tick = UINT32_MAX - 5U;
     uint32_t start = tick;
     App_Init();
+    assert(flightLed && flight_cansat.switches.led);
+    assert(flight_cansat.actuators.servo.enabled);
+    assert(flight_cansat.actuators.servo.servo1Angle == 0 && flight_cansat.actuators.servo.servo2Angle == 0);
     assert(!flight_sensor_init_ok);
     App_RunOnce();
     assert(!flight_cansat.bmp.valid && flight_cansat.bmi.valid);

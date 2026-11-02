@@ -57,12 +57,15 @@ static void executeCommand(Cansat *cansat, uint8_t id)
         cansat->telemetry.commandExecuted = true;
         break;
     case COMMAND_CALIBRATE_SENSORS:
+        /* Temporarily disabled: startup owns calibration and its flash commit.
+         * Still count/report the received ID, but do not claim execution.
         if (cansat->missionState == CANSAT_STATE_LAUNCH_PAD &&
             StateMachine_GetStatus()->persistenceOK) {
             if (calibrationPending || SensorAcquisition_StartCalibration(cansat)) {
                 calibrationPending = calibrationIsLatest = true;
             }
         }
+        */
         break;
     default: break;
     }

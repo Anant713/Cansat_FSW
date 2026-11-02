@@ -31,7 +31,7 @@ class GuiTests(unittest.TestCase):
         port = Port()
         app.console = port
         status = {"type": "status", "ms": 200, "seq": 42, "input": 1,
-                  "height": 0, "ground": 100000, "fresh": 1, "state": 0, "saved": 1, "cal": 0}
+                  "height": 0, "ground": 100000, "fresh": 1, "state": 0, "saved": 1, "cal": 2}
         app.receive(json.dumps(status).encode())
         self.assertTrue(app.ready)
         self.assertEqual(app.seq, 43)

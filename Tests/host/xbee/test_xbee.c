@@ -95,9 +95,8 @@ int main(void)
     finish_boot(); CHECK(XBee_GetStatus() == XBEE_READY);
     CHECK(reset_pin == GPIO_PIN_SET);
     awake = GPIO_PIN_RESET;
-    CHECK(!XBee_IsAwake() && XBee_GetStatus() == XBEE_ASLEEP);
-    CHECK(XBee_Send(bytes, 153) == XBEE_NOT_READY);
-    awake = GPIO_PIN_SET;
+    CHECK(!XBee_IsAwake() && XBee_GetStatus() == XBEE_READY);
+    /* Leave ON/SLEEP low through the following successful transmission. */
     CHECK(XBee_Send(NULL, 1) == XBEE_INVALID_ARGUMENT);
     CHECK(XBee_Send(bytes, 0) == XBEE_INVALID_ARGUMENT);
     CHECK(XBee_Send(bytes, XBEE_TX_CAPACITY + 1) == XBEE_INVALID_ARGUMENT);
@@ -112,6 +111,7 @@ int main(void)
     CHECK(XBee_Reset() == XBEE_BUSY);
     HAL_UART_TxCpltCallback(&other); CHECK(XBee_IsTxBusy());
     HAL_UART_TxCpltCallback(&uart); CHECK(!XBee_IsTxBusy() && stats().txCompleted == 1);
+    awake = GPIO_PIN_SET;
     HAL_UART_TxCpltCallback(&uart); CHECK(stats().txCompleted == 1);
     tx_result = HAL_BUSY;
     CHECK(XBee_Send(bytes, 153) == XBEE_BUSY && !XBee_IsTxBusy());

@@ -20,8 +20,12 @@ typedef struct Cansat Cansat;
  * pair after driver initialization. Never calculates a new ground zero on boot.
  * Without a saved record, pressure is usable but relative height is invalid. */
 bool SensorAcquisition_Init(void);
+/* Call after Init, before starting mission processing. On a launch-pad boot,
+ * blocks for combined calibration and atomic flash commit. Airborne/touchdown
+ * boots retain the calibration restored by Init and never establish a new zero. */
+bool SensorAcquisition_CalibrateAtStartup(Cansat *cansat);
 
-/* Explicit ground-only command operation, not part of ordinary acquisition.
+/* Explicit ground-only calibration operation, used by the startup wrapper.
  * Reinitializes BMP/AHT/BMI/MAG (blocking startup delays), preserves existing
  * correction coefficients, then starts asynchronous stationary gyro sampling.
  * Launch-pad only. UpdateCalibration services completion and atomically
@@ -34,6 +38,10 @@ SensorCalibrationStatus SensorAcquisition_GetCalibrationStatus(void);
 /* True when a validated persisted pair is available (not a sensor-health flag). */
 bool SensorAcquisition_HasCalibration(void);
 float SensorAcquisition_GetGroundPressure(void);
+/* Explicit ground-only bench zero after Init: blocking BMP reference sampling.
+ * RAM-only, no gyro calibration or flash write. Failure invalidates BMP height.
+ * Flight/recovery must continue using the combined persisted calibration. */
+bool SensorAcquisition_CalibrateGroundPressure(void);
 
 /* Call regularly on a zero-initialized Cansat (or after Cansat_Init).
  * Only sensor fields are written. No estimation, mission decisions, actuator

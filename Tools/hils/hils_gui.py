@@ -68,7 +68,7 @@ class HilsGUI:
         ttk.Button(profiles, text="Hold current height", command=self.hold).pack(side="left")
         commands = ttk.LabelFrame(root, text="Ground commands (selected route above)", padding=8)
         commands.pack(fill="x", padx=8)
-        for label, command in [("1: Telemetry ON", 1), ("2: Telemetry OFF", 2), ("3: Calibrate sensors", 3)]:
+        for label, command in [("1: Telemetry ON", 1), ("2: Telemetry OFF", 2), ("3: Calibration (no-op)", 3)]:
             ttk.Button(commands, text=label, command=lambda c=command: self.command(c)).pack(side="left", padx=5)
         ttk.Button(commands, text="New mission (test only)", command=self.new_mission).pack(side="left", padx=5)
         ttk.Button(commands, text="MCU reset", command=self.reset).pack(side="left", padx=5)
@@ -182,8 +182,8 @@ class HilsGUI:
                 messagebox.showerror("Profile", str(exc))
 
     def run_profile(self):
-        if not self.ready or not self.status.get("saved") or self.status.get("state") != 0 or self.status.get("cal") == 1:
-            messagebox.showerror("Profile", "Start in LAUNCH_PAD with saved calibration (and no calibration running).")
+        if not self.ready or not self.status.get("saved") or self.status.get("state") != 0 or self.status.get("cal") != 2:
+            messagebox.showerror("Profile", "Stream stable ground pressure until startup calibration reports SUCCESS in LAUNCH_PAD.")
             return
         try:
             ground = float(self.ground.get())
@@ -200,12 +200,6 @@ class HilsGUI:
     def command(self, command):
         if not self.ready:
             return
-        if command == 3:
-            # A modal confirmation here would stop the generator and make the
-            # pressure window stale while the user reads it.
-            if not self.streaming or self.profile_start is not None or abs(self.last_height) > 0.01:
-                messagebox.showerror("Calibration", "Keep the board stationary and stream constant 0 m with no noise for at least 2 seconds first.")
-                return
         try:
             if self.radio:
                 packet = bytes([0xa5, command, 0x5a])

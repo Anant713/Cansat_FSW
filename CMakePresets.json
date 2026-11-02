@@ -1,6 +1,7 @@
 {
     "version": 3,
     "configurePresets": [
+        { "name": "TestHILSTelemetryOn", "inherits": "default", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "FIRMWARE_APP": "testHILS_telemetry_on" } },
         { "name": "TestHILS", "inherits": "default", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "FIRMWARE_APP": "testHILS" } },
         { "name": "HDRMDroneNoCommands", "inherits": "default", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "FIRMWARE_APP": "HDRM_drone_no_commands_test" } },
         { "name": "HDRMDroneTest", "inherits": "default", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "FIRMWARE_APP": "HDRM_drone_test" } },
@@ -107,6 +108,7 @@
         }
     ],
     "buildPresets": [
+        { "name": "TestHILSTelemetryOn", "configurePreset": "TestHILSTelemetryOn" },
         { "name": "TestHILS", "configurePreset": "TestHILS" },
         { "name": "HDRMDroneNoCommands", "configurePreset": "HDRMDroneNoCommands" },
         { "name": "HDRMDroneTest", "configurePreset": "HDRMDroneTest" },

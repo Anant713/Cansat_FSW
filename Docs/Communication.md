@@ -157,7 +157,7 @@ Commands are three **binary bytes**, not ASCII hex strings:
 | --- | --- | --- | --- |
 | 1 | TELEMETRY_ON | A5 01 5A | Enables scheduled telemetry |
 | 2 | TELEMETRY_OFF | A5 02 5A | Disables future scheduled telemetry |
-| 3 | CALIBRATE_SENSORS | A5 03 5A | Launch-pad initialization, ground reference and stationary gyro calibration |
+| 3 | CALIBRATE_SENSORS | A5 03 5A | Temporarily disabled; received and reported but not executed |
 
 `Communication_ProcessCommand` preserves partial framing across chunks and can
 consume multiple packets in one chunk. A5 restarts framing; malformed frames and
@@ -175,47 +175,7 @@ is no separate command acknowledgement packet. The OFF result can be observed in
 SD logs/debugger; scheduled telemetry is then disabled. Explicit calls to
 `Communication_SendTelemetry` still bypass the scheduled enable gate.
 
-Command 3 is accepted for execution only in LAUNCH_PAD with healthy mission
-persistence. Keep the CanSat stationary at launch ground. It reinitializes BMP,
-AHT20, BMI270 and IIS2MDC; GNSS and battery are not restarted. Existing software
-corrections are saved before initialization and reapplied afterward. Old sensor
-snapshots are invalidated so failed initialization cannot expose old data as fresh.
-
-- The explicit `BMP280_CalibrateGroundPressure` call averages 16 readings after settling, establishing a new
-  ground pressure. This is height-zero calibration, not calibration against a
-  reference thermometer/barometer. Existing temperature/pressure offsets are kept.
-- AHT20 initialization checks/restores factory calibration. It does not infer a
-  humidity offset from stationarity; any existing humidity offset is retained.
-- BMI270 initialization alone clears gyro bias. The command additionally calls
-  `BMI270_StartGyroCalibration`: 128 fresh samples, 10-second timeout (macros in
-  SensorAcquisition.h). Ordinary acquisition advances sampling without waiting.
-  Motion, timeout or I/O failure prevents success. Accelerometer correction is
-  preserved; no gravity vector is subtracted as if it were a zero-g bias.
-- IIS2MDC initialization enables continuous hardware offset cancellation. Existing
-  hard/soft-iron coefficients are reapplied. It does not derive new coefficients:
-  that requires a separate multi-orientation calibration. On startup the driver
-  uses the compiled `IIS2MDC_DEFAULT_CALIBRATION` board coefficients.
-
-The initial reinitialization phase blocks the main loop for several seconds
-(BMP alone about 2.7 seconds). UART DMA/interrupts remain active, within queue
-capacity. Sensor acquisition, logging and telemetry schedules resume afterward;
-gyro sampling then progresses asynchronously. This is a ground-only operation,
-not a guarantee of uninterrupted 1/2 Hz output during calibration.
-
-`commandExecuted` remains false while pending and becomes true only after gyro
-completion and SensorAcquisition's successful atomic flash save of ground pressure
-and all three gyro biases. Failure restores the previous saved pair in initialized
-drivers; hardware initialization failures still require resolution. Startup restores
-the pair after initializing hardware and does not recalculate ground pressure.
-Missing calibration leaves height invalid until a launch-pad calibration command.
-See [calibration and flash recovery](Calibration.md) for record format and failure handling.
-
-Repeated calibration requests while pending count as received packets but do not
-restart sampling. Telemetry commands remain usable during asynchronous sampling.
-Calibration completion updates the historical `lastExecutedCommand`; it changes
-`commandExecuted` only if calibration is still the latest received command.
-The combined acquisition/logging/telemetry test does not initialize the mission
-state machine, so calibration is rejected there; use flight firmware for command 3.
+Command 3 is currently a no-op. The calibration-start call is commented out; it performs no sensor or flash operations. Reception updates command ID/count, but commandExecuted remains false and lastExecutedCommand is unchanged. Startup now performs ground-pressure and gyro calibration, then saves the pair before mission processing. Airborne boots restore the pair. See [calibration and flash recovery](Calibration.md).
 
 UART4 RX uses circular DMA (`HAL_UARTEx_ReceiveToIdle_DMA`). UART IDLE and DMA
 half/full-transfer interrupt callbacks copy new bytes into the driver's 2048-byte

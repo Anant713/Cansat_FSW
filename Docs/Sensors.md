@@ -288,3 +288,15 @@ against [Zephyr's AHT20/DHT20 driver](https://github.com/zephyrproject-rtos/zeph
 The [current Aosong example](https://www.aosong.com/uploadfiles/2025/02/20250211143151669.zip)
 also checks CRC and calibration/busy status; it assumes valid factory startup
 status and does not implement that restore procedure.
+
+## Standalone sensor test startup
+
+`TestSensors` now runs application startup calibration before starting its local
+sensor display. Keep the board stationary: ground pressure and three gyro biases
+are saved together on LAUNCH_PAD. Saved airborne/touchdown state instead restores
+the existing pair. The local BMP/BMI instances then load that same flash record.
+The console prints P0, applied gyro biases in deg/s, pressure and relative height
+in metres. At the calibrated launch location, height and stationary gyro rates
+should be near zero (measurement noise remains). Invalid height is explicitly
+reported. The optional manual `cal gyro` console operation remains a local driver
+diagnostic; it does not update the persisted ground/gyro pair.

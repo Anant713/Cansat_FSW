@@ -11,24 +11,24 @@ cmake --build --preset HDRMDroneNoCommands
 Flash `build/HDRMDroneNoCommands/HDRM_drone_no_commands_test.elf` and open USART3
 at 115200 baud, 8N1. Keep the CanSat stationary until calibration SUCCESS appears.
 
-Both servos are initialized, commanded to 90 degrees and PWM-enabled before
+The LED turns on and both servos are commanded to 0 degrees and PWM-enabled before
 blocking SD/sensor startup. They hold that command throughout calibration, HDRM
 firing and afterward, including after console `stop`. Telemetry/CSV contain both
-90-degree commands. The console reports initialization/PWM-start failure if one
+0-degree commands. The console reports initialization/PWM-start failure if one
 occurs. Servo supply power must remain connected; enabling PWM supplies the control
 signal, not electrical power to the servos.
 
-Startup explicitly calls `SensorAcquisition_StartCalibration`: reinitialize sensors,
-calculate ground pressure, and start stationary gyro sampling. Acquisition completes
-the gyro sampling and commits ground pressure/biases to flash. This test deliberately
-recalibrates on every boot, even if saved calibration exists. A blank mission journal
+Startup calls `SensorAcquisition_CalibrateAtStartup` through the shared harness,
+waiting for ground/gyro calibration and its flash commit before regular tasks.
+LAUNCH_PAD boots recalibrate; airborne/touchdown boots restore the saved pair.
+A blank mission journal
 gets its initial launch-pad record; existing mission records are preserved. Flight
 state transitions, camera actions and command processing are not run.
 
 After successful calibration, the HDRM countdown begins:
 
-- `HDRM_FIRE`: default 30000 ms after calibration completion.
-- `HDRM_ON`: default 2000 ms measured from actual HDRM activation.
+- `HDRM_FIRE`: currently 300000 ms after calibration/recovery completion.
+- `HDRM_ON`: currently 10000 ms measured from actual HDRM activation.
 
 Both macros are at the top of the test file. HDRM stays off throughout initialization
 and calibration. Calibration/setup failure disables firing while acquisition,
@@ -49,8 +49,8 @@ an active pulse; reset starts a fresh test. Stream off does not hide HDRM events
 
 The software timer is checked before and after each loop. Blocking sensor/SD work
 can delay firing or extend the pulse; the console reports actual ON duration.
-Reboot starts calibration again and then arms a new one-shot, so the stationary-
-startup assumption applies to every reboot of this test firmware.
+Reboot repeats calibration/recovery and arms a new one-shot. Launch-pad startup
+must be stationary; this drone timer is independent of flight-state deployment recovery.
 
 Host tests cover explicit startup calibration, calibration-success countdown gating,
 calibration failure, unconditional scheduled TX, discarded OFF packets, pulse

@@ -101,6 +101,15 @@ bool SensorAcquisition_StartCalibration(Cansat *c)
     return true;
 }
 
+bool SensorAcquisition_CalibrateGroundPressure(void)
+{
+    if (calibrationStatus == SENSOR_CAL_RUNNING) return false;
+    /* A failed startup zero must not silently use a previous flight's zero. */
+    bmp.groundPressureValid = false;
+    bmp.groundPressurePa = 0.0f;
+    return bmp.initialized && BMP280_CalibrateGroundPressure(&bmp);
+}
+
 SensorCalibrationStatus SensorAcquisition_UpdateCalibration(void)
 {
     if (calibrationStatus == SENSOR_CAL_RUNNING) {

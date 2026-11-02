@@ -15,6 +15,7 @@ bool flight_sensor_init_ok;
 bool flight_communication_init_ok;
 bool flight_logging_init_ok;
 bool flight_state_init_ok;
+bool flight_calibration_init_ok;
 static uint32_t lastAcquisition, lastTelemetry, lastLog;
 
 /* Acquisition, persistent mission gates, communication and logging. */
@@ -22,12 +23,18 @@ void App_Init(void)
 {
     /* Generated main has already configured GPIO and TIM4. */
     if (!Switches_Init() || !Servo_Init()) Error_Handler();
-    /* Servo outputs remain disabled until explicitly enabled by the app. */
+    Switches_LED(true);
+    Servo_SetAngles(0.0f, 0.0f);
+    Servo_Enable(); /* Hold startup position throughout calibration and flight. */
     Cansat_Init(&flight_cansat);
     flight_cansat.actuators.servoValid = Servo_GetData(&flight_cansat.actuators.servo);
+    Switches_Update(&flight_cansat.switches);
+    if (!flight_cansat.actuators.servoValid || !flight_cansat.actuators.servo.enabled)
+        Error_Handler();
     /* Mount before UART reception starts: SD startup can block for some time. */
     flight_logging_init_ok = Logging_Init();
     flight_sensor_init_ok = SensorAcquisition_Init();
+    flight_calibration_init_ok = SensorAcquisition_CalibrateAtStartup(&flight_cansat);
     flight_communication_init_ok = Communication_Init();
     flight_state_init_ok = StateMachine_Init(&flight_cansat);
     lastTelemetry = lastLog = HAL_GetTick();
@@ -49,6 +56,10 @@ void App_RunOnce(void)
      * mission state. Auxiliary navigation altitude is updated separately;
      * state-machine height gates read the BMP driver's relative height. */
     BarometricAltitude_Update(&flight_cansat);
+    if (!flight_calibration_init_ok) {
+        flight_cansat.bmp.heightValid = false;
+        flight_cansat.navigation.altitudeValid = false;
+    }
     StateMachine_Update(&flight_cansat);
     /* Refresh after acquisition; both due operations use the same Cansat data.
      * Send first so a successful packet count is reflected in the log row. */

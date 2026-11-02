@@ -50,6 +50,8 @@ bool XBee_IsTxBusy(void);
  * application must discard its partial command and resynchronize framing. */
 XBeeResult XBee_Read(uint8_t *data, uint16_t capacity, uint16_t *length);
 bool XBee_IsAwake(void); /* Raw ON/SLEEP indication; not RF association/CTS. */
+/* ON/SLEEP gating is temporarily disabled in GetStatus/Send. IsAwake still
+ * reports the real pin level for diagnostics. Boot/fault/busy checks remain. */
 XBeeStatus XBee_GetStatus(void);
 void XBee_GetDiagnostics(XBeeDiagnostics *out);
 

@@ -15,12 +15,15 @@ cmake --build --preset TestAcquisitionLoggingTelemetry
 ```
 
 Flash the matching ELF and open USART3 at 115200 baud, 8N1. Preserve sector 11:
-initialization restores existing gyro/ground calibration without resampling zero.
-Without a saved calibration pair, relative altitude is unavailable; calibrate
-using flight firmware first. The standalone TestSensors bench test explicitly
-samples its own temporary ground zero and does not persist it.
+both variants calibrate ground pressure and gyro during LAUNCH_PAD initialization
+and save the pair to flash before normal tasks start. Keep stationary until
+`Calibration saved/restored` appears. Airborne/touchdown boots retain the saved
+reference instead of recalibrating. TestSensors uses the same startup policy.
 The telemetry variant uses UART4/XBee and enables transmission automatically.
-No mission transitions, actuator commands or mission-flash writes run in either test.
+Both tests turn the LED on and enable both servos at 0 degrees before sensor/SD
+startup. PWM remains enabled to hold that angle. No mission transitions run.
+An empty mission journal
+is seeded with LAUNCH_PAD before saving calibration; existing mission state is preserved.
 
 Both tests share the acquisition/logging harness; the telemetry entry point enables
 its additional compile-time task. CMake links only one entry point. The shared
@@ -84,3 +87,20 @@ Tests/host/run_acquisition_logging_tests.ps1 exercises both variants using mock
 execution durations. Existing communication/logging suites cover binary fields,
 CSV equality and SD failures. Validate actual files, RF reception and durations
 on the board.
+# Startup calibration in both variants
+
+The shared harness enables startup calibration for both variants and its drone wrapper.
+After sensor initialization, it calls `SensorAcquisition_CalibrateAtStartup()`
+which uses the existing BMP driver's ground-calibration routine: settle for 1 s,
+then average 16 real pressure samples 110 ms apart (about 2.7 s total).
+Keep the board stationary at the starting location until initialization completes.
+The measured P0 is printed once. Subsequent driver reads calculate
+`44330 * (1 - (pressurePa / P0)^0.1903)` in `bmp.relativeHeightM`, used by both
+telemetry ALTITUDE and SD CSV. Height is now relative to the startup location,
+approximately zero at startup, rather than using fixed sea-level pressure.
+On LAUNCH_PAD, startup also collects stationary gyro samples and saves ground
+pressure plus all three gyro biases together in flash. Airborne and touchdown
+boots retain the restored pair instead of recalibrating. Keep stationary until
+startup completes; failures are reported on the console.
+The existing unsigned telemetry altitude field cannot represent negative altitude;
+such values encode as its unavailable sentinel.

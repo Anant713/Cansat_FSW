@@ -1,4 +1,6 @@
-/* Reuse the flight scheduler verbatim; only BMP I/O is substituted at link time. */
+/* Compile the current FlightApp directly: startup outputs, recovery and the
+ * scheduler stay in sync. Test wrappers substitute BMP input, defer launch-pad
+ * calibration until PC pressure arrives, and count logging/TX results. */
 #define App_Init Hils_FlightInit
 #define App_RunOnce Hils_FlightRunOnce
 #include "../Core/Src/apps/FlightApp.c"
@@ -6,11 +8,27 @@
 #undef App_RunOnce
 #include "Console.h"
 #include "hils/HilsInput.h"
+#include "drivers/MissionStore.h"
 #include <stdio.h>
 
 #define HILS_REPORT_PERIOD_MS 200U
+#ifndef HILS_TELEMETRY_DEFAULT_ON
+#define HILS_TELEMETRY_DEFAULT_ON 0
+#endif
 static uint32_t lastReport, logRows, logErrors, txErrors, badFrames;
 static bool reportNow;
+static bool startupCalibrationPending;
+bool __real_SensorAcquisition_CalibrateAtStartup(Cansat *c);
+bool __wrap_SensorAcquisition_CalibrateAtStartup(Cansat *c)
+{
+    uint32_t payload = 0;
+    MissionStoreResult stored = MissionStore_Load(&payload);
+    if (stored == MISSION_STORE_ERROR) return false;
+    if ((payload & 0xffU) != CANSAT_STATE_LAUNCH_PAD)
+        return __real_SensorAcquisition_CalibrateAtStartup(c);
+    startupCalibrationPending = true; /* Console must first supply the ground window. */
+    return false;
+}
 
 bool __real_Logging_Write(const Cansat *c);
 bool __wrap_Logging_Write(const Cansat *c)
@@ -78,9 +96,12 @@ void App_Init(void)
     HilsInput_Init();
     /* Open console after blocking startup to avoid accumulating old PC samples. */
     Hils_FlightInit();
+    /* Set once per boot; subsequent ON/OFF commands retain control. */
+    flight_cansat.telemetry.enabled = HILS_TELEMETRY_DEFAULT_ON && flight_communication_init_ok;
     (void)Console_Init();
     Communication_SetCommandObserver(commandEvent);
-    Console_Write("{\"type\":\"boot\",\"protocol\":1,\"bmp\":\"simulated\",\"outputs\":\"REAL\"}\r\n");
+    Console_Printf("{\"type\":\"boot\",\"protocol\":1,\"bmp\":\"simulated\",\"outputs\":\"REAL\",\"telemetry_default_on\":%u}\r\n",
+                   (unsigned)HILS_TELEMETRY_DEFAULT_ON);
     reportNow = true;
 }
 void App_RunOnce(void)
@@ -107,6 +128,8 @@ void App_RunOnce(void)
             if (ok) {
                 flight_cansat.bmp.valid = flight_cansat.bmp.heightValid = false;
                 HilsInput_Init();
+                startupCalibrationPending = true;
+                flight_calibration_init_ok = false;
                 ok = Logging_Stop() && Logging_Init();
                 logRows = 0;
             }
@@ -120,6 +143,13 @@ void App_RunOnce(void)
             break;
         default: ++badFrames; break;
         }
+    }
+    float ground;
+    if (startupCalibrationPending && HilsInput_GroundPressure(HAL_GetTick(), &ground)) {
+        startupCalibrationPending = false;
+        flight_calibration_init_ok = __real_SensorAcquisition_CalibrateAtStartup(&flight_cansat);
+        Console_Printf("{\"type\":\"startup_calibration\",\"ok\":%u}\r\n",
+                       (unsigned)flight_calibration_init_ok);
     }
     Hils_FlightRunOnce();
     if (reportNow || (uint32_t)(HAL_GetTick() - lastReport) >= HILS_REPORT_PERIOD_MS) {

@@ -20,12 +20,11 @@ do not send an ASCII hex string or a console command:
 | --- | --- |
 | A5 01 5A | RX command 1; SUCCESS, telemetry ON |
 | A5 02 5A | RX command 2; SUCCESS, telemetry OFF; SD logging continues |
-| A5 03 5A | RX command 3; calibration requested, IN PROGRESS, then SUCCESS or FAILED |
+| A5 03 5A | RX command 3; ignored (temporarily disabled, no flash write) |
 
 The test uses production Communication, Telemetry, SensorAcquisition and Logging.
 An optional main-loop command observer reports every recognized packet, even
-multiple packets in one read. It reports receipt before blocking calibration setup
-and asynchronous completion even if a newer telemetry command has arrived. Unknown
+multiple packets in one read. It reports receipt and execution results. Unknown
 IDs and malformed packets do not execute; XBee RX byte/error counters help diagnose
 such traffic. The observer is unset in ordinary flight firmware.
 
@@ -44,16 +43,16 @@ mission storage rejects calibration. This is a ground bench test, not a full
 mission-state recovery test.
 
 Calibration uses actual sensors and appends real calibration records to sector 11.
-Keep the board stationary at the intended ground reference. Startup restores saved
-calibration; command 3 recalibrates explicitly. Setup/ground averaging blocks for
-several seconds, so task rates and console service pause during that phase. Gyro
-sampling afterward runs asynchronously. Repeated requests while pending do not
-restart it. Success means the ground-pressure/gyro-bias pair was saved; see
+Keep the board stationary at the intended ground reference. Startup checks the
+stored mission: LAUNCH_PAD calibrates ground pressure and gyro, waiting for flash
+save before starting normal tasks. Airborne/touchdown boots restore the saved pair.
+Command 3 does nothing. Success means the pair was saved/restored; see
 [Calibration.md](Calibration.md).
 
 For a reboot check: complete calibration, note the displayed ground pressure, reset
-the MCU without erasing sector 11, and verify `calibration restored=1` with the same
-reference. Telemetry starts OFF again, and logging creates a new CSV file. The
+the MCU without erasing sector 11. Launch-pad boots now measure a new pair;
+airborne boots retain the same reference. Telemetry starts OFF again and logging
+creates a new CSV file. The
 restored gyro bias is applied inside BMI270_Read. Preserve sector 11 when reflashing.
 
 Host verification: `Tests/host/run_communication_tests.ps1` exercises this harness
