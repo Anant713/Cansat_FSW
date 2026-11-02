@@ -14,11 +14,15 @@ typedef struct {
     float maximum_rms_fraction;
     float minimum_airspeed_mps;
     float maximum_airspeed_mps;
+    float minimum_turn_radius_m;
+    float maximum_turn_radius_m;
+    float minimum_turn_direction_consistency;
 } DcsCircleFitConfig;
 
 typedef struct {
     float north_mps[DCS_CIRCLE_FIT_MAX_SAMPLES];
     float east_mps[DCS_CIRCLE_FIT_MAX_SAMPLES];
+    uint32_t epoch_ms[DCS_CIRCLE_FIT_MAX_SAMPLES];
     uint32_t last_epoch_ms;
     uint8_t sample_count;
     bool has_epoch;
@@ -30,6 +34,9 @@ typedef struct {
     float maneuver_airspeed_mps;
     float radial_rms_mps;
     float direction_coverage_rad;
+    float turn_rate_rad_s;
+    float turn_radius_m;
+    float turn_direction_consistency;
     uint8_t sample_count;
 } DcsCircleFitResult;
 

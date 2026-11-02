@@ -11,7 +11,7 @@ static DcsRuntimeConfig test_config(void)
     DcsRuntimeConfig config = {
         .canopy_settling_ms = 10u,
         .identification_steering_command = 0.4f,
-        .identification_timeout_ms = 5000u,
+        .identification_timeout_ms = 10000u,
         .minimum_identification_height_m = 100.0f,
         .trim_settling_ms = 10u,
         .trim_sample_count = 3u,
@@ -27,6 +27,9 @@ static DcsRuntimeConfig test_config(void)
             .maximum_rms_fraction = 0.1f,
             .minimum_airspeed_mps = 1.0f,
             .maximum_airspeed_mps = 10.0f,
+            .minimum_turn_radius_m = 1.0f,
+            .maximum_turn_radius_m = 100.0f,
+            .minimum_turn_direction_consistency = 0.8f,
         },
         .wind = {
             .horizontal_airspeed_mps = 8.0f,
@@ -108,15 +111,17 @@ int main(void)
 
     for (uint32_t i = 0u; i < 12u; ++i) {
         const float angle = 2.0f * PI_F * (float)i / 12.0f;
-        input.now_ms += 100u;
+        input.now_ms += 500u;
         input.has_fresh_gnss_velocity = true;
-        input.gnss_epoch_ms = 100u * (i + 1u);
+        input.gnss_epoch_ms = 500u * (i + 1u);
         input.gnss_system_time_ms = input.now_ms;
         input.navigation.ground_v_north_mps = 2.0f + 4.0f * cosf(angle);
         input.navigation.ground_v_east_mps = -3.0f + 4.0f * sinf(angle);
         dcs_runtime_update(&state, &config, &input, &output);
     }
     assert(output.mode == DCS_RUNTIME_TRIM_SETTLING);
+    assert(output.turn_radius_identified);
+    assert(output.turn_radius_m > 3.0f && output.turn_radius_m < 5.0f);
     assert(output.brake_demand.left == 0.0f && output.brake_demand.right == 0.0f);
 
     input.now_ms += 10u;

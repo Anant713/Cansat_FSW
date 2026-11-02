@@ -14,10 +14,10 @@
 #define DCS_FLIGHT_MAX_GNSS_AGE_MS                            1500u
 #define DCS_FLIGHT_MAX_BARO_AGE_MS                             500u
 
-/* Attitude: launch with body +X true North, +Y East and +Z down. */
+/* Launch upright with physical Body +X true North. Payload +X is +15 degrees. */
 #define DCS_FLIGHT_INITIAL_ROLL_RAD                          0.0f
 #define DCS_FLIGHT_INITIAL_PITCH_RAD                         0.0f
-#define DCS_FLIGHT_INITIAL_HEADING_RAD                       0.0f
+#define DCS_FLIGHT_INITIAL_HEADING_RAD                0.2617993878f
 #define DCS_FLIGHT_IMU_SAMPLE_RATE_HZ                      100.0f
 #define DCS_FLIGHT_GYRO_RANGE_DEG_S                       2000.0f
 #define DCS_FLIGHT_AHRS_GAIN                                 0.5f
@@ -26,7 +26,7 @@
 #define DCS_FLIGHT_AHRS_RECOVERY_TIMEOUT_S                   5.0f
 #define DCS_FLIGHT_MIN_ACCEL_G                               0.8f
 #define DCS_FLIGHT_MAX_ACCEL_G                               1.2f
-#define DCS_FLIGHT_CALIBRATED_MAG_STRENGTH                  25.25f
+#define DCS_FLIGHT_CALIBRATED_MAG_STRENGTH                 48.4249f
 #define DCS_FLIGHT_MAX_MAG_RELATIVE_ERROR                    0.25f
 /* WMMHR-2025, 2026-11-02, 26.717535 N, 84.301543 E, 60 m GPS:
  * +0.4720 degrees east. True heading = magnetic heading + declination.
@@ -72,7 +72,8 @@
 
 /* In-flight wind/trim identification. */
 #define DCS_FLIGHT_CANOPY_SETTLING_MS                         5000u
-#define DCS_FLIGHT_IDENTIFICATION_COMMAND                     0.35f
+/* 30 degree pull mapped over the installed 5..45 degree usable range. */
+#define DCS_FLIGHT_IDENTIFICATION_COMMAND                    0.625f
 #define DCS_FLIGHT_IDENTIFICATION_TIMEOUT_MS                 30000u
 #define DCS_FLIGHT_IDENTIFICATION_MIN_HEIGHT_M               150.0f
 #define DCS_FLIGHT_TRIM_SETTLING_MS                            3000u
@@ -85,6 +86,9 @@
 #define DCS_FLIGHT_CIRCLE_MAX_RMS_FRACTION                     0.10f
 #define DCS_FLIGHT_CIRCLE_MIN_AIRSPEED_MPS                     1.0f
 #define DCS_FLIGHT_CIRCLE_MAX_AIRSPEED_MPS                    15.0f
+#define DCS_FLIGHT_CIRCLE_MIN_TURN_RADIUS_M                    3.0f
+#define DCS_FLIGHT_CIRCLE_MAX_TURN_RADIUS_M                  100.0f
+#define DCS_FLIGHT_CIRCLE_MIN_DIRECTION_CONSISTENCY            0.80f
 
 /* Straight-flight wind estimator. */
 #define DCS_FLIGHT_WIND_EMA_ALPHA                              0.20f
@@ -104,11 +108,11 @@
 #define DCS_FLIGHT_FLARE_HEIGHT_M                               5.0f
 #define DCS_FLIGHT_FLARE_BRAKE_DEMAND                           0.8f
 #define DCS_FLIGHT_MAX_STEERING_ANGLE_DEG                      45.0f
-#define DCS_FLIGHT_LEFT_SERVO_NEUTRAL_US                         500u
+#define DCS_FLIGHT_LEFT_SERVO_NEUTRAL_US                         556u
 #define DCS_FLIGHT_LEFT_SERVO_MAX_PULL_US                       1000u
 #define DCS_FLIGHT_LEFT_SERVO_ABSOLUTE_MIN_US                    500u
 #define DCS_FLIGHT_LEFT_SERVO_ABSOLUTE_MAX_US                   2500u
-#define DCS_FLIGHT_RIGHT_SERVO_NEUTRAL_US                        500u
+#define DCS_FLIGHT_RIGHT_SERVO_NEUTRAL_US                        556u
 #define DCS_FLIGHT_RIGHT_SERVO_MAX_PULL_US                      1000u
 #define DCS_FLIGHT_RIGHT_SERVO_ABSOLUTE_MIN_US                   500u
 #define DCS_FLIGHT_RIGHT_SERVO_ABSOLUTE_MAX_US                  2500u

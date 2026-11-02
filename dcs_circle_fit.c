@@ -21,7 +21,14 @@ bool dcs_circle_fit_config_valid(const DcsCircleFitConfig *config)
         isfinite(config->minimum_airspeed_mps) &&
         isfinite(config->maximum_airspeed_mps) &&
         config->minimum_airspeed_mps > 0.0f &&
-        config->maximum_airspeed_mps > config->minimum_airspeed_mps;
+        config->maximum_airspeed_mps > config->minimum_airspeed_mps &&
+        isfinite(config->minimum_turn_radius_m) &&
+        isfinite(config->maximum_turn_radius_m) &&
+        config->minimum_turn_radius_m > 0.0f &&
+        config->maximum_turn_radius_m > config->minimum_turn_radius_m &&
+        isfinite(config->minimum_turn_direction_consistency) &&
+        config->minimum_turn_direction_consistency > 0.0f &&
+        config->minimum_turn_direction_consistency <= 1.0f;
 }
 
 bool dcs_circle_fit_init(DcsCircleFitState *state,
@@ -49,6 +56,7 @@ bool dcs_circle_fit_add(DcsCircleFitState *state,
     const uint8_t index = state->sample_count;
     state->north_mps[index] = ground_v_north_mps;
     state->east_mps[index] = ground_v_east_mps;
+    state->epoch_ms[index] = gnss_epoch_ms;
     state->sample_count++;
     state->last_epoch_ms = gnss_epoch_ms;
     state->has_epoch = true;
@@ -105,6 +113,13 @@ static void sort_angles(float *angles, uint8_t count)
         }
         angles[j] = value;
     }
+}
+
+static float wrap_signed(float angle)
+{
+    float wrapped = fmodf(angle + DCS_CIRCLE_PI_F, DCS_CIRCLE_TWO_PI_F);
+    if (wrapped < 0.0f) wrapped += DCS_CIRCLE_TWO_PI_F;
+    return wrapped - DCS_CIRCLE_PI_F;
 }
 
 bool dcs_circle_fit_solve(const DcsCircleFitState *state,
@@ -191,12 +206,43 @@ bool dcs_circle_fit_solve(const DcsCircleFitState *state,
         return false;
     }
 
+    float signed_sweep = 0.0f, absolute_sweep = 0.0f;
+    float previous_angle = atan2f(state->east_mps[0] - wind_e,
+                                  state->north_mps[0] - wind_n);
+    for (uint8_t i = 1u; i < count; ++i) {
+        const float angle = atan2f(state->east_mps[i] - wind_e,
+                                   state->north_mps[i] - wind_n);
+        const float delta = wrap_signed(angle - previous_angle);
+        signed_sweep += delta;
+        absolute_sweep += fabsf(delta);
+        previous_angle = angle;
+    }
+    const uint32_t elapsed_ms = state->epoch_ms[count - 1u] - state->epoch_ms[0];
+    if (elapsed_ms == 0u || !isfinite(signed_sweep) ||
+        !isfinite(absolute_sweep) || absolute_sweep <= 0.0f) {
+        return false;
+    }
+    const float consistency = fabsf(signed_sweep) / absolute_sweep;
+    const float turn_rate = fabsf(signed_sweep) / ((float)elapsed_ms * 0.001f);
+    const float turn_radius = radius / turn_rate;
+    if (!isfinite(consistency) || !isfinite(turn_rate) ||
+        !isfinite(turn_radius) ||
+        fabsf(signed_sweep) < config->minimum_direction_coverage_rad ||
+        consistency < config->minimum_turn_direction_consistency ||
+        turn_radius < config->minimum_turn_radius_m ||
+        turn_radius > config->maximum_turn_radius_m) {
+        return false;
+    }
+
     *result = (DcsCircleFitResult){
         .wind_north_mps = wind_n,
         .wind_east_mps = wind_e,
         .maneuver_airspeed_mps = radius,
         .radial_rms_mps = rms,
         .direction_coverage_rad = coverage,
+        .turn_rate_rad_s = turn_rate,
+        .turn_radius_m = turn_radius,
+        .turn_direction_consistency = consistency,
         .sample_count = count,
     };
     return true;

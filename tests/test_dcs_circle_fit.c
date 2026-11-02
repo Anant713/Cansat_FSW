@@ -21,13 +21,16 @@ int main(void)
         .maximum_rms_fraction = 0.1f,
         .minimum_airspeed_mps = 1.0f,
         .maximum_airspeed_mps = 10.0f,
+        .minimum_turn_radius_m = 1.0f,
+        .maximum_turn_radius_m = 100.0f,
+        .minimum_turn_direction_consistency = 0.8f,
     };
     DcsCircleFitState state;
     DcsCircleFitResult result;
     assert(dcs_circle_fit_init(&state, &config));
     for (uint32_t i = 0u; i < 24u; ++i) {
         const float angle = 2.0f * PI_F * (float)i / 24.0f;
-        assert(dcs_circle_fit_add(&state, &config, 100u * i,
+        assert(dcs_circle_fit_add(&state, &config, 200u * i,
             2.0f + 4.0f * cosf(angle), -3.0f + 4.0f * sinf(angle)));
     }
     assert(dcs_circle_fit_solve(&state, &config, &result));
@@ -35,8 +38,11 @@ int main(void)
     assert(near(result.wind_east_mps, -3.0f, 1.0e-3f));
     assert(near(result.maneuver_airspeed_mps, 4.0f, 1.0e-3f));
     assert(result.direction_coverage_rad > 5.5f);
+    assert(near(result.turn_rate_rad_s, 1.308997f, 1.0e-3f));
+    assert(near(result.turn_radius_m, 3.055775f, 1.0e-3f));
+    assert(result.turn_direction_consistency > 0.99f);
 
-    assert(!dcs_circle_fit_add(&state, &config, 2300u, 0.0f, 0.0f));
+    assert(!dcs_circle_fit_add(&state, &config, 4600u, 0.0f, 0.0f));
 
     DcsCircleFitState line;
     assert(dcs_circle_fit_init(&line, &config));

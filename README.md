@@ -59,8 +59,10 @@ requested GPS velocity-circle method for wind/airspeed identification, primary
 references, and why the damaged circling drop does not establish healthy trim
 speed. dcs_circle_fit.h/.c implements the bounded velocity-circle fit, and
 dcs_runtime.h/.c commands the configurable identification turn followed by a
-settled trim-speed sampling stage. The damaged flight still supplies no healthy
-flight value.
+settled trim-speed sampling stage. The same manoeuvre estimates turn rate from
+the ordered wind-corrected velocity vectors and sets the planner turn radius to
+airspeed divided by turn rate. The damaged flight still supplies no healthy
+flight value, so the configured 20 m radius remains the fallback.
 
 dcs_control.h/.c implements the configurable heading-error/rate-feedback
 controller, single-sided brake allocation, symmetric flare allocation and
@@ -178,10 +180,12 @@ required: keep one DcsAttitudeState and update it for each new gyro sample.
 Hardware bench calibration remains required. The wind model and full guidance
 phase sequence are implemented. [GUIDANCE_DESIGN.md](GUIDANCE_DESIGN.md) records
 the runtime, fallbacks and parameters that still need physical calibration.
-The main FSW calls dcs_runtime_start when its own mission state enters secondary
-descent, then calls dcs_runtime_update from the cooperative super-loop. The DCS
-runtime does not infer deployment or duplicate the mission state machine. It
-returns pulse widths but does not access PWM hardware.
+The integrated main FSW calls dcs_runtime_start only after its own state machine
+reports secondary descent and completed parafoil deployment. The runtime then
+enforces a further 5 s canopy-settling interval before identification. It calls
+dcs_runtime_update from the cooperative super-loop, does not infer deployment
+or duplicate the mission state machine, and returns pulse widths without
+accessing PWM hardware.
 See [DCS_RUNTIME_INTEGRATION.md](DCS_RUNTIME_INTEGRATION.md) for the exact call
 boundary, input/output wiring and mandatory pre-flight calibration values.
 

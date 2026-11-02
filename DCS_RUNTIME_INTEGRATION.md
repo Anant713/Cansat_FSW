@@ -2,11 +2,13 @@
 
 ## Call ownership
 
-The main flight-software state machine owns the mission transition into
-secondary descent. On that transition it calls `dcs_runtime_start` once. It then
-calls `dcs_runtime_update` from the cooperative super-loop while secondary DCS
-is active. DCS does not infer HDRM deployment and does not create a second
-mission state machine.
+The main flight-software state machine owns secondary descent and HDRM timing.
+It calls `dcs_runtime_start` once only when the state is secondary descent and
+`parafoilDeployed` is true. The runtime's 5 s `CANOPY_SETTLING` timer therefore
+starts after the deployment pulse completes, not on entry to secondary descent.
+It then calls `dcs_runtime_update` from the cooperative super-loop through
+secondary descent and touchdown so a latched flare remains commanded. DCS does
+not infer deployment and does not create a second mission state machine.
 
 The runtime sequence is:
 
@@ -46,6 +48,7 @@ sampling accept unique fresh epochs only.
 ## Output wiring
 
 `DcsRuntimeOutput` contains the mode, identification status, wind/airspeed,
+identified planning turn radius,
 guidance diagnostics, normalized steering/brake demands, and independently
 mapped left/right pulse widths. The FSW PWM driver applies those pulse widths;
 the portable module contains no timer or HAL access.
@@ -85,8 +88,9 @@ measured installed endpoints:
 pulse = neutral + normalized_pull * (maximum_pull - neutral)
 ```
 
-The frozen assumption is 500 us neutral and 1000 us at the 45-degree pull
-endpoint on both MG996R channels, with an absolute 500-2500 us bound. This has
+The frozen assumption is 556 us (approximately 5 degrees) neutral and 1000 us
+at the 45-degree pull endpoint on both MG996R channels, with an absolute
+500-2500 us bound. This has
 not been established from installed-linkage measurement. Before arming, the
 crew must at minimum verify neutral direction, pull direction, and absence of
 binding on both channels.
@@ -96,7 +100,7 @@ binding on both channels.
 `dcs_flight_config_load` supplies the single configuration selected for this
 flight. It includes:
 
-- horizontal trim speed, sink rate and turn/planning radii;
+- horizontal trim speed, sink rate and fallback turn/planning radius;
 - reserve, tolerance, qE/qA distances and LOS look-ahead;
 - identification brake command, settling/timeout/height gates and fit gates;
 - controller gains, maximum command and command-rate limit;
@@ -110,7 +114,15 @@ actuator decision can be reconstructed.
 
 The attitude configuration applies +0.4720 degrees east magnetic declination
 from WMMHR-2025 for 2026-11-02 at the target and 60 m GPS elevation. The
-configured 25.25 magnetic-magnitude gate remains tied to the calibration
-pipeline's output units; the WMM physical total field of 48.4249 microtesla is
-not substituted unless the FSW confirms it supplies calibrated vectors in
-microtesla.
+IIS2MDC driver supplies calibrated vectors in microtesla, so the configured
+magnetic-magnitude reference is the WMM physical total field of 48.4249
+microtesla. The known launch pose is upright with physical Body +X facing true
+North; payload/parafoil +X is initialized at +15 degrees.
+
+During the 30-degree identification pull, the circle fit first estimates wind
+and manoeuvre airspeed in velocity space. It then unwraps the ordered
+wind-corrected velocity direction, divides angular sweep by elapsed GNSS time,
+and calculates `turn_radius = airspeed / abs(turn_rate)`. Direction consistency,
+sweep, fit residual and radius gates must all pass. A valid identified radius
+replaces the planner radius for the current flight and lower-bounds the loiter
+radius; otherwise the 20 m fallback remains.

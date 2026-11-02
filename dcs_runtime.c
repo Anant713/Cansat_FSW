@@ -48,6 +48,7 @@ bool dcs_runtime_start(DcsRuntimeState *state,
     }
     state->wind_config = config->wind;
     state->current_airspeed_mps = config->fallback_horizontal_airspeed_mps;
+    state->current_turn_radius_m = config->guidance.planner.turn_radius_m;
     state->controller.has_time = true;
     state->controller.last_update_ms = now_ms;
     state->last_runtime_update_ms = now_ms;
@@ -63,6 +64,10 @@ static DcsGuidanceConfig current_guidance_config(const DcsRuntimeState *state,
 {
     DcsGuidanceConfig guidance = config->guidance;
     guidance.planner.horizontal_airspeed_mps = state->current_airspeed_mps;
+    guidance.planner.turn_radius_m = state->current_turn_radius_m;
+    if (guidance.loiter_radius_m < state->current_turn_radius_m) {
+        guidance.loiter_radius_m = state->current_turn_radius_m;
+    }
     return guidance;
 }
 
@@ -157,6 +162,8 @@ static void update_identification(DcsRuntimeState *state,
                 input->navigation.ground_v_east_mps);
             if (dcs_circle_fit_solve(&state->circle, &config->circle_fit,
                                      &state->circle_result)) {
+                state->current_turn_radius_m = state->circle_result.turn_radius_m;
+                state->turn_radius_identified = true;
                 state->mode = DCS_RUNTIME_TRIM_SETTLING;
                 state->mode_start_ms = input->now_ms;
             }
@@ -265,7 +272,9 @@ void dcs_runtime_update(DcsRuntimeState *state,
     output->identification_complete = state->identification_complete;
     output->identification_failed = state->identification_failed;
     output->trim_speed_identified = state->trim_speed_identified;
+    output->turn_radius_identified = state->turn_radius_identified;
     output->horizontal_airspeed_mps = state->current_airspeed_mps;
+    output->turn_radius_m = state->current_turn_radius_m;
     output->has_wind_estimate = state->wind.has_estimate;
     output->wind_north_mps = state->wind.north_mps;
     output->wind_east_mps = state->wind.east_mps;

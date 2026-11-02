@@ -30,9 +30,11 @@ int main(void)
     assert(dcs_runtime_start(&runtime, &config.runtime, 0u));
     assert(dcs_guidance_start(&guidance, &config.runtime.guidance,
                               &guidance_input));
-    assert(config.runtime.left_servo.neutral_pulse_us == 500u);
+    assert(config.runtime.left_servo.neutral_pulse_us == 556u);
     assert(config.runtime.left_servo.maximum_pull_pulse_us == 1000u);
-    assert(config.runtime.right_servo.neutral_pulse_us == 500u);
+    assert(config.runtime.right_servo.neutral_pulse_us == 556u);
+    assert(fabsf(config.attitude.initial_heading_rad - 0.2617993878f) < 1.0e-6f);
+    assert(fabsf(config.attitude.calibrated_mag_strength - 48.4249f) < 1.0e-4f);
     assert(config.runtime.right_servo.maximum_pull_pulse_us == 1000u);
     puts("dcs_flight_config tests passed");
     return 0;

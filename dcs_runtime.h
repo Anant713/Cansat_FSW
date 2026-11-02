@@ -61,7 +61,9 @@ typedef struct {
     bool identification_complete;
     bool identification_failed;
     bool trim_speed_identified;
+    bool turn_radius_identified;
     float horizontal_airspeed_mps;
+    float turn_radius_m;
     bool has_wind_estimate;
     float wind_north_mps;
     float wind_east_mps;
@@ -77,6 +79,7 @@ typedef struct {
     DcsGuidanceState guidance;
     DcsHeadingControllerState controller;
     float current_airspeed_mps;
+    float current_turn_radius_m;
     float trim_speed_sum_mps;
     uint8_t trim_samples;
     uint32_t last_trim_epoch_ms;
@@ -87,6 +90,7 @@ typedef struct {
     bool identification_complete;
     bool identification_failed;
     bool trim_speed_identified;
+    bool turn_radius_identified;
     bool guidance_started;
     bool initialized;
 } DcsRuntimeState;

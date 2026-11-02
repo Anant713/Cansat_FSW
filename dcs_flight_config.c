@@ -66,6 +66,12 @@ void dcs_flight_config_load(DcsFlightConfig *config)
                     DCS_FLIGHT_CIRCLE_MIN_AIRSPEED_MPS,
                 .maximum_airspeed_mps =
                     DCS_FLIGHT_CIRCLE_MAX_AIRSPEED_MPS,
+                .minimum_turn_radius_m =
+                    DCS_FLIGHT_CIRCLE_MIN_TURN_RADIUS_M,
+                .maximum_turn_radius_m =
+                    DCS_FLIGHT_CIRCLE_MAX_TURN_RADIUS_M,
+                .minimum_turn_direction_consistency =
+                    DCS_FLIGHT_CIRCLE_MIN_DIRECTION_CONSISTENCY,
             },
             .wind = {
                 .horizontal_airspeed_mps =
