@@ -5,23 +5,17 @@
 void CameraControl_Init(CameraState *camera)
 {
     if (!camera || camera->phase != CAMERA_OFF || camera->isOn) return;
-    Switch_Capture(false);
-    Switches_DVR(true);
-    camera->isOn = true;
-    camera->isRecording = false;
-    camera->phase = CAMERA_INIT_HIGH;
-    camera->phaseStartedMs = HAL_GetTick();
+    CameraControl_Start(camera);
+    HAL_Delay(CAMERA_START_PULSE_MS);
+    CameraControl_Update(camera);
+    HAL_Delay(CAMERA_INIT_RECORD_HOLD_MS);
+    CameraControl_Stop(camera);
+    HAL_Delay(CAMERA_INIT_STOP_SETTLE_MS);
 }
 
 void CameraControl_Start(CameraState *camera)
 {
-    if (!camera) return;
-    if (camera->phase == CAMERA_OFF) {
-        CameraControl_Init(camera);
-        return;
-    }
-    if (camera->phase != CAMERA_INIT_WAIT ||
-        (uint32_t)(HAL_GetTick() - camera->phaseStartedMs) < CAMERA_INIT_DELAY_MS) return;
+    if (!camera || camera->phase != CAMERA_OFF) return;
     Switches_DVR(true);
     camera->isOn = true;
     Switch_Capture(true);
@@ -33,15 +27,7 @@ void CameraControl_Update(CameraState *camera)
 {
     if (!camera) return;
     uint32_t now = HAL_GetTick();
-    if (camera->phase == CAMERA_INIT_HIGH &&
-        (uint32_t)(now - camera->phaseStartedMs) >= CAMERA_INIT_PULSE_MS) {
-        Switches_DVR(false);
-        camera->isOn = false;
-        camera->phase = CAMERA_INIT_WAIT;
-        camera->phaseStartedMs = now; /* Full delay after the actual falling edge. */
-    } else if (camera->phase == CAMERA_INIT_WAIT) {
-        CameraControl_Start(camera);
-    } else if (camera->phase == CAMERA_CAPTURE_HIGH &&
+    if (camera->phase == CAMERA_CAPTURE_HIGH &&
                (uint32_t)(now - camera->lastCaptureHighMs) >= CAMERA_START_PULSE_MS) {
         Switch_Capture(false);
         camera->isRecording = true;

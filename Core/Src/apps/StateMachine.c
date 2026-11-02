@@ -9,6 +9,8 @@
 
 static StateMachineStatus status;
 static bool initialized;
+static bool cameraReady = true;
+void StateMachine_SetCameraReady(bool ready) { cameraReady = ready; }
 static uint32_t hdrmStart;
 static uint32_t lastHeightSampleMs;
 static bool heightSampleSeen;
@@ -27,8 +29,8 @@ static bool persist(CansatMissionState state, bool deployed)
 static void enter(Cansat *c)
 {
     status.heightConfirmCount = 0;
-    if (c->missionState >= CANSAT_STATE_ASCENT && c->missionState <= CANSAT_STATE_DESCENT_2)
-        CameraControl_Init(&c->camera);
+    if (cameraReady && c->missionState >= CANSAT_STATE_LAUNCH_PAD && c->missionState <= CANSAT_STATE_DESCENT_2)
+        CameraControl_Start(&c->camera);
     if (c->missionState == CANSAT_STATE_DESCENT_2 && !status.deploymentComplete) {
         Switches_HDRM(true);
         hdrmStart = HAL_GetTick();
@@ -108,6 +110,9 @@ void StateMachine_Update(Cansat *c)
 {
     if (!c || !initialized) return;
     uint32_t now = HAL_GetTick();
+    if (cameraReady && c->missionState >= CANSAT_STATE_LAUNCH_PAD &&
+        c->missionState <= CANSAT_STATE_DESCENT_2)
+        CameraControl_Start(&c->camera); /* Idempotent; also handles deferred startup. */
     CameraControl_Update(&c->camera);
     if (status.hdrmActive && (uint32_t)(now - hdrmStart) >= STATE_HDRM_PULSE_MS) {
         Switches_HDRM(false); /* Always turn off even if the subsequent flash write fails. */

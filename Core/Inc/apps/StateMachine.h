@@ -23,6 +23,8 @@ typedef struct {
 } StateMachineStatus;
 
 bool StateMachine_Init(Cansat *cansat);
+/* Flight/HILS startup gate: release only after sensor calibration/recovery succeeds. */
+void StateMachine_SetCameraReady(bool ready);
 void StateMachine_Update(Cansat *cansat);
 const StateMachineStatus *StateMachine_GetStatus(void);
 /* Explicit ground-only new-flight operation. Never called automatically at boot. */

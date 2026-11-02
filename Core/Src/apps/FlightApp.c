@@ -8,6 +8,7 @@
 #include "apps/Logging.h"
 #include "apps/StateMachine.h"
 #include "apps/BarometricAltitude.h"
+#include "apps/CameraControl.h"
 
 /* Available in the debugger; later operations will consume this shared data. */
 Cansat flight_cansat;
@@ -31,11 +32,14 @@ void App_Init(void)
     Switches_Update(&flight_cansat.switches);
     if (!flight_cansat.actuators.servoValid || !flight_cansat.actuators.servo.enabled)
         Error_Handler();
+    CameraControl_Init(&flight_cansat.camera);
+    Switches_Update(&flight_cansat.switches);
     /* Mount before UART reception starts: SD startup can block for some time. */
     flight_logging_init_ok = Logging_Init();
     flight_sensor_init_ok = SensorAcquisition_Init();
     flight_calibration_init_ok = SensorAcquisition_CalibrateAtStartup(&flight_cansat);
     flight_communication_init_ok = Communication_Init();
+    StateMachine_SetCameraReady(flight_calibration_init_ok);
     flight_state_init_ok = StateMachine_Init(&flight_cansat);
     lastTelemetry = lastLog = HAL_GetTick();
     lastAcquisition = lastTelemetry - ACQUISITION_PERIOD_MS;

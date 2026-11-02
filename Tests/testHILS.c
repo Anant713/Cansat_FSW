@@ -130,6 +130,8 @@ void App_RunOnce(void)
                 HilsInput_Init();
                 startupCalibrationPending = true;
                 flight_calibration_init_ok = false;
+                StateMachine_SetCameraReady(false);
+                CameraControl_Stop(&flight_cansat.camera);
                 ok = Logging_Stop() && Logging_Init();
                 logRows = 0;
             }
@@ -148,6 +150,7 @@ void App_RunOnce(void)
     if (startupCalibrationPending && HilsInput_GroundPressure(HAL_GetTick(), &ground)) {
         startupCalibrationPending = false;
         flight_calibration_init_ok = __real_SensorAcquisition_CalibrateAtStartup(&flight_cansat);
+        StateMachine_SetCameraReady(flight_calibration_init_ok);
         Console_Printf("{\"type\":\"startup_calibration\",\"ok\":%u}\r\n",
                        (unsigned)flight_calibration_init_ok);
     }

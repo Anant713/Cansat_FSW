@@ -79,14 +79,16 @@ sector 11 resets the journal and must not be done during a mission.
 
 ## Entry actions
 
-- Ascent calls `CameraControl_Init`: Capture low, DVR high for
-  `CAMERA_INIT_PULSE_MS` (1000 ms), DVR low, then wait `CAMERA_INIT_DELAY_MS`
-  (default 200 ms; tune in CameraControl.h). Update then calls CameraControl_Start:
-  DVR high and Capture high for CAMERA_START_PULSE_MS (1000 ms), then Capture low
-  and `camera.isRecording=true`. Recovery in ascent or descent repeats the full
-  sequence because GPIO outputs were reset. Repeated Init/Start requests during
-  startup/recording do not restart it; Stop cancels pending startup. The off delay
-  starts from the actual DVR falling edge, including when the loop runs late.
+- FlightApp calls `CameraControl_Init` once during startup, before SD/sensor setup
+  and state recovery: normal Start (DVR high + Capture high for 1000 ms), Capture
+  low, hold 500 ms, normal Stop (Capture high then DVR low), settle 500 ms. This
+  blocking initialization takes about 2 seconds and leaves the camera off.
+  `CAMERA_INIT_RECORD_HOLD_MS` and `CAMERA_INIT_STOP_SETTLE_MS` tune the 500 ms delays.
+- Ascent calls `CameraControl_Start` directly: DVR high + Capture high, then the
+  main-loop Update lowers Capture after `CAMERA_START_PULSE_MS` (1000 ms) and sets
+  `camera.isRecording=true`. No initialization cycle is repeated at the transition.
+  Recovered ascent/descent starts recording after the boot initialization finishes.
+  Repeated Start while active is ignored; Stop cancels a pending capture pulse.
 - Descent 1 keeps camera recording active; it adds no actuator command.
 - Descent 2 raises HDRM for 2000 ms, then lowers it and commits deployment complete.
   The confirmed recovery policy repeats a full pulse if completion was not committed.
@@ -105,10 +107,10 @@ pulse timing would need hardware timers or interrupt-driven output shutdown.
 ## Camera test and verification
 
 Configure/build `TestCamera` and flash `build/TestCamera/test_camera.elf`.
-Send `record` on the USART3 console to run the initialization pulse, off delay,
-and recording-start pulse; send `stop` to cancel any phase, raise Capture and
-switch DVR off. `status` reports camera phase (0 off, 1 init high, 2 off delay,
-3 capture high, 4 recording) and camera
+Startup runs the same automatic record/stop initialization cycle as FlightApp.
+Wait for Camera ready, then send `record` on USART3 to start recording directly;
+send `stop` to cancel the capture pulse, raise Capture and switch DVR off.
+`status` reports camera phase (0 off, 3 capture high, 4 recording) and camera
 and console diagnostics. There is no automatic ten-second stop.
 `test_camera`, `test_camera_complete`, and console output expose its progress.
 This test does not write the mission journal. Verify the actual saved

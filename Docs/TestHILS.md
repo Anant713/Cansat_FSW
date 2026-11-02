@@ -147,7 +147,7 @@ Expected sequence with the current state-machine macros:
 
 | State change | Condition / expected activity |
 |---|---|
-| LAUNCH_PAD → ASCENT | 5 distinct fresh samples above 30 m; camera initialization pulse, delay, then recording pulse |
+| LAUNCH_PAD → ASCENT | 5 distinct fresh samples above 30 m; direct camera recording pulse (initialization record/stop cycle already ran at boot) |
 | ASCENT → DESCENT_1 | Observed peak above 700 m and fall greater than 20 m, confirmed by 5 samples |
 | DESCENT_1 → DESCENT_2 | 5 samples below 600 m; HDRM on for 2 s; deployment completion saved |
 | DESCENT_2 → TOUCHDOWN | 5 samples below 20 m; camera stops, buzzer starts, SD logging stops |
