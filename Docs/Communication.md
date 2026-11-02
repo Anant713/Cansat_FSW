@@ -104,8 +104,10 @@ example, -32768 is reserved in signed
 
 Validity comes from sensor flags, GNSS per-field flags, or estimate/servo validity
 flags. Retained I2C samples use acquisition's last-good-sample contract. No additional
-mission-dependent age threshold is applied. No wrapping or saturation is used to
-force an out-of-range measurement into a field.
+mission-dependent age threshold is applied. Valid finite negative barometric
+heights are clamped to zero in ALTITUDE, identically for binary telemetry and CSV
+logging; the stored sensor height is unchanged. Other out-of-range measurements
+are not wrapped or saturated.
 
 ## Type and budget notes
 
@@ -119,9 +121,9 @@ force an out-of-range measurement into a field.
 - The 24-bit millisecond timestamp's last usable value is **4:39:37.214**, because
   0xFFFFFF is now reserved. At/above that limit it encodes the sentinel. Use a
   four-byte timestamp if longer operation is required (a protocol change).
-- Unsigned altitude fields cannot encode negative readings, and their last usable
-  value is 6553.4 m with the sentinel reserved. Signed int32 counts would support
-  negative relative/MSL altitude while retaining positive range.
+- ALTITUDE clamps valid negative barometric heights to zero. GNSS_ALTITUDE still
+  uses the sentinel for negative readings. Both unsigned fields have a last usable
+  value of 6553.4 m with the sentinel reserved.
 - uint16 packet counters wrap modulo 65536 (about 9.1 hours at 2 Hz). A wider
   counter would require updating the wire layout.
 - Servo uint8 fields suit the current 0..180 degree commands. Signed deflections

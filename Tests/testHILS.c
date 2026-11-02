@@ -123,6 +123,7 @@ void App_RunOnce(void)
         case HILS_STATUS: reportNow = true; break;
         case HILS_NEW_MISSION: {
             /* Test-console operation, not a fourth flight telecommand. */
+            StateMachine_SetCameraReady(false);
             bool ok = SensorAcquisition_GetCalibrationStatus() != SENSOR_CAL_RUNNING &&
                       StateMachine_BeginNewMission(&flight_cansat);
             if (ok) {

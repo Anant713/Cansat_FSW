@@ -56,7 +56,12 @@ int main(void)
     }
     memset(flash, 0xff, sizeof(flash));
     Cansat c = {0};
+    StateMachine_SetCameraReady(false);
     assert(StateMachine_Init(&c));
+    assert(!dvr && !c.camera.isOn);
+    StateMachine_Update(&c); assert(!dvr);
+    StateMachine_SetCameraReady(true);
+    StateMachine_Update(&c);
     assert(c.missionState == CANSAT_STATE_LAUNCH_PAD);
     assert(dvr && capture && c.camera.phase == CAMERA_CAPTURE_HIGH);
     assert(!StateMachine_GetStatus()->recovered);

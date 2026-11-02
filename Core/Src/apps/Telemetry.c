@@ -167,7 +167,11 @@ size_t Telemetry_Encode(const Cansat *c, uint8_t *buffer, size_t capacity)
     field(&packet, teamId, sizeof(teamId));
     number(&packet, c->telemetry.uptimeMs, 1, 0, 0xffffff, true, 3);
     integer(&packet, c->telemetry.packetCount, 2);
-    number(&packet, c->bmp.relativeHeightM, 10, 0, UINT16_MAX, c->bmp.valid && c->bmp.heightValid, 2);
+    /* Ground-level noise can produce valid negative heights. Clamp only the
+     * transmitted/logged value; preserve raw height for flight processing. */
+    double height = c->bmp.relativeHeightM;
+    if (isfinite(height) && height < 0.0) height = 0.0;
+    number(&packet, height, 10, 0, UINT16_MAX, c->bmp.valid && c->bmp.heightValid, 2);
     number(&packet, c->bmp.pressure, 1, 0, 0xffffff, c->bmp.valid, 3);
     number(&packet, c->bmp.temperature, 100, INT16_MIN, INT16_MAX, c->bmp.valid, 2);
     number(&packet, c->battery.voltage, 1000, 0, UINT16_MAX, c->battery.valid, 2);

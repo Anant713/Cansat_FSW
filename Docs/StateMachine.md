@@ -84,9 +84,12 @@ sector 11 resets the journal and must not be done during a mission.
   low, hold 500 ms, normal Stop (Capture high then DVR low), settle 500 ms. This
   blocking initialization takes about 2 seconds and leaves the camera off.
   `CAMERA_INIT_RECORD_HOLD_MS` and `CAMERA_INIT_STOP_SETTLE_MS` tune the 500 ms delays.
-- Ascent calls `CameraControl_Start` directly: DVR high + Capture high, then the
+- LAUNCH_PAD calls `CameraControl_Start` after sensor initialization and successful
+  startup calibration/flash save (or recovery): DVR high + Capture high, then the
   main-loop Update lowers Capture after `CAMERA_START_PULSE_MS` (1000 ms) and sets
-  `camera.isRecording=true`. No initialization cycle is repeated at the transition.
+  `camera.isRecording=true`. Recording continues through ascent and descent;
+  no initialization cycle is repeated at a transition. A startup readiness gate
+  prevents recording before calibration completes, including deferred HILS calibration.
   Recovered ascent/descent starts recording after the boot initialization finishes.
   Repeated Start while active is ignored; Stop cancels a pending capture pulse.
 - Descent 1 keeps camera recording active; it adds no actuator command.

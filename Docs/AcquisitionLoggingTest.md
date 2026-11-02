@@ -102,5 +102,6 @@ On LAUNCH_PAD, startup also collects stationary gyro samples and saves ground
 pressure plus all three gyro biases together in flash. Airborne and touchdown
 boots retain the restored pair instead of recalibrating. Keep stationary until
 startup completes; failures are reported on the console.
-The existing unsigned telemetry altitude field cannot represent negative altitude;
-such values encode as its unavailable sentinel.
+Valid negative barometric heights encode as zero in telemetry and CSV logging.
+The original signed height remains available for flight processing. Invalid or
+non-finite heights still encode as the unavailable sentinel.
