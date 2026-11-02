@@ -1,14 +1,18 @@
 #pragma once
 #include "drivers/Camera.h"
 #define CAMERA_START_PULSE_MS 1000U
-#define CAMERA_INIT_PULSE_MS 1000U
-#ifndef CAMERA_INIT_DELAY_MS
-#define CAMERA_INIT_DELAY_MS 200U /* DVR off -> recording startup; tune on hardware. */
+#ifndef CAMERA_INIT_RECORD_HOLD_MS
+#define CAMERA_INIT_RECORD_HOLD_MS 500U
 #endif
-/* Nonblocking: DVR high 1 s, low, wait INIT_DELAY, then Start automatically.
- * Call Update every loop. Init/Start during an active sequence are idempotent.
- * Start from OFF also performs initialization. Stop cancels every phase. */
+#ifndef CAMERA_INIT_STOP_SETTLE_MS
+#define CAMERA_INIT_STOP_SETTLE_MS 500U
+#endif
+/* Startup only, blocking (~2 s): normal Start + full capture pulse, hold 500 ms,
+ * Stop, settle 500 ms. Leaves camera OFF, ready for the first real Start.
+ * Call after GPIO/switch initialization, before state recovery/entry actions. */
 void CameraControl_Init(CameraState *camera);
+/* Direct nonblocking recording start: DVR high + Capture high; Update lowers
+ * Capture after CAMERA_START_PULSE_MS. Repeated Start does not restart the pulse. */
 void CameraControl_Start(CameraState *camera);
 void CameraControl_Update(CameraState *camera);
 void CameraControl_Stop(CameraState *camera);

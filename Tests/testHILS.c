@@ -123,6 +123,7 @@ void App_RunOnce(void)
         case HILS_STATUS: reportNow = true; break;
         case HILS_NEW_MISSION: {
             /* Test-console operation, not a fourth flight telecommand. */
+            StateMachine_SetCameraReady(false);
             bool ok = SensorAcquisition_GetCalibrationStatus() != SENSOR_CAL_RUNNING &&
                       StateMachine_BeginNewMission(&flight_cansat);
             if (ok) {
@@ -130,6 +131,8 @@ void App_RunOnce(void)
                 HilsInput_Init();
                 startupCalibrationPending = true;
                 flight_calibration_init_ok = false;
+                StateMachine_SetCameraReady(false);
+                CameraControl_Stop(&flight_cansat.camera);
                 ok = Logging_Stop() && Logging_Init();
                 logRows = 0;
             }
@@ -148,6 +151,7 @@ void App_RunOnce(void)
     if (startupCalibrationPending && HilsInput_GroundPressure(HAL_GetTick(), &ground)) {
         startupCalibrationPending = false;
         flight_calibration_init_ok = __real_SensorAcquisition_CalibrateAtStartup(&flight_cansat);
+        StateMachine_SetCameraReady(flight_calibration_init_ok);
         Console_Printf("{\"type\":\"startup_calibration\",\"ok\":%u}\r\n",
                        (unsigned)flight_calibration_init_ok);
     }

@@ -6,6 +6,8 @@
 
 /* Initialize standalone instances with CameraState state = {0}. */
 typedef enum {
+    /* INIT_HIGH/INIT_WAIT retained as reserved legacy values; startup Init now
+     * performs the normal record/stop cycle synchronously. */
     CAMERA_OFF = 0, CAMERA_INIT_HIGH, CAMERA_INIT_WAIT,
     CAMERA_CAPTURE_HIGH, CAMERA_RECORDING
 } CameraPhase;

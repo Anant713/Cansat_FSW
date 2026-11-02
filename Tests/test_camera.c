@@ -11,6 +11,19 @@ volatile uint32_t test_camera_reset_flags;
 bool test_camera_console_ok;
 static char command[CONSOLE_LINE_MAX + 1U];
 
+/* Shared by the automatic startup cycle and the console commands. */
+static void recordCamera(void)
+{
+    test_camera_complete = false;
+    CameraControl_Start(&test_camera);
+}
+
+static void stopCamera(void)
+{
+    CameraControl_Stop(&test_camera);
+    test_camera_complete = true;
+}
+
 void App_Init(void)
 {
     test_camera_reset_flags = RCC->CSR;
@@ -27,6 +40,9 @@ void App_Init(void)
         (unsigned)((test_camera_reset_flags & RCC_CSR_SFTRSTF) != 0),
         (unsigned)((test_camera_reset_flags & RCC_CSR_IWDGRSTF) != 0),
         (unsigned)((test_camera_reset_flags & RCC_CSR_WWDGRSTF) != 0));
+    Console_Write("Camera startup: automatic record/stop cycle; wait for ready.\r\n");
+    CameraControl_Init(&test_camera);
+    test_camera_complete = true;
     Console_Write("Camera ready. Commands: record, stop, status (press Enter).\r\n");
 }
 void App_RunOnce(void)
@@ -38,15 +54,12 @@ void App_RunOnce(void)
             if (test_camera.phase != CAMERA_OFF) {
                 Console_Write(test_camera.isRecording ? "Already recording.\r\n" : "Recording startup in progress.\r\n");
             } else {
-                test_camera_complete = false;
-                Console_Write("record received; initializing camera.\r\n");
-                CameraControl_Init(&test_camera);
-                Console_Printf("DVR high for %lu ms, then off for %lu ms, then capture startup.\r\n",
-                    (unsigned long)CAMERA_INIT_PULSE_MS, (unsigned long)CAMERA_INIT_DELAY_MS);
+                recordCamera();
+                Console_Printf("record received; DVR on, capture high for %lu ms.\r\n",
+                    (unsigned long)CAMERA_START_PULSE_MS);
             }
         } else if (strcmp(command, "stop") == 0) {
-            CameraControl_Stop(&test_camera);
-            test_camera_complete = true;
+            stopCamera();
             Console_Write("Recording stopped; DVR off.\r\n");
         } else if (strcmp(command, "status") == 0) {
             Console_Printf("Camera on=%u recording=%u phase=%u; RX bytes=%lu lines=%lu errors=%lu dropped=%lu\r\n",

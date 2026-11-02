@@ -79,7 +79,8 @@ static void test_csv(void)
     Cansat_Init(&c);
     compare_fields(&c); /* Every unavailable measurement retains its sentinel. */
     c.telemetry.packetCount = 65535;
-    c.bmp = (BMP280Data){.valid=true,.temperature=-12.5f,.pressure=101325};
+    c.bmp = (BMP280Data){.valid=true,.heightValid=true,.relativeHeightM=-1.0f,
+        .temperature=-12.5f,.pressure=101325};
     c.bmi = (BMI270Data){.valid=true,.accelX=72.25f,.accelY=-72.25f,.gyroX=1.25f};
     c.mag = (IIS2MDCData){.valid=true,.magX=-20};
     c.gnss = (GNSSData){.valid=true,.fixValid=true,.latitude=-12.3456,
@@ -89,6 +90,7 @@ static void test_csv(void)
     char csv[TELEMETRY_CSV_CAPACITY];
     size_t length = Telemetry_FormatCSV(&c, csv, sizeof(csv));
     assert(strstr(csv, ",7225,-7225,") && strstr(csv, ",-1250,"));
+    assert(strstr(csv, ",65535,0,101325,-1250,"));
     assert(!memcmp(&before, &c, sizeof(c)));
     for (size_t cap = 1; cap <= length; ++cap) {
         memset(csv, '!', sizeof(csv));

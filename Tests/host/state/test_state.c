@@ -13,6 +13,7 @@ static int writesLeft = -1;
 static bool dvr, capture, hdrm, buzzer;
 static unsigned stops;
 uint32_t HAL_GetTick(void) { return tick; }
+void HAL_Delay(uint32_t ms) { tick += ms; }
 uint32_t MissionStore_ReadWord(uint32_t offset) { return flash[offset / 4U]; }
 bool MissionStore_WriteWord(uint32_t offset, uint32_t value)
 {
@@ -55,24 +56,28 @@ int main(void)
     }
     memset(flash, 0xff, sizeof(flash));
     Cansat c = {0};
+    StateMachine_SetCameraReady(false);
     assert(StateMachine_Init(&c));
+    assert(!dvr && !c.camera.isOn);
+    StateMachine_Update(&c); assert(!dvr);
+    StateMachine_SetCameraReady(true);
+    StateMachine_Update(&c);
     assert(c.missionState == CANSAT_STATE_LAUNCH_PAD);
+    assert(dvr && capture && c.camera.phase == CAMERA_CAPTURE_HIGH);
     assert(!StateMachine_GetStatus()->recovered);
     sample(&c, 0, 30); assert(c.missionState == CANSAT_STATE_LAUNCH_PAD);
     assert(!StateMachine_GetStatus()->maxHeightValid);
-    sample(&c, 1, 31); assert(c.missionState == CANSAT_STATE_ASCENT && dvr && !capture);
+    sample(&c, 1, 31); assert(c.missionState == CANSAT_STATE_ASCENT && dvr && capture);
     assert(!StateMachine_GetStatus()->maxHeightValid); /* Seed on next ASCENT check. */
-    sample(&c, 1000, 100); assert(!c.camera.isRecording);
-    sample(&c, 1001, 120); assert(!dvr && !capture && !c.camera.isRecording);
-    sample(&c, 1001 + CAMERA_INIT_DELAY_MS, 120); assert(dvr && capture && !c.camera.isRecording);
-    sample(&c, 1001 + CAMERA_INIT_DELAY_MS + CAMERA_START_PULSE_MS, 120);
+    sample(&c, 999, 100); assert(!c.camera.isRecording);
+    sample(&c, 1001, 120);
     assert(c.camera.isRecording && !capture);
     assert(StateMachine_GetStatus()->maxHeightM == 120);
     /* Old arming bit is ignored; reboot seeds a new peak from valid BMP height. */
     reset_outputs(); c = (Cansat){0}; tick = 0;
     assert(StateMachine_Init(&c));
     assert(StateMachine_GetStatus()->recovered && !StateMachine_GetStatus()->maxHeightValid);
-    assert(c.missionState == CANSAT_STATE_ASCENT && dvr && !capture);
+    assert(c.missionState == CANSAT_STATE_ASCENT && dvr && capture);
     c.navigation.altitude = 10000; c.navigation.altitudeValid = true;
     sample(&c, 0, 100);
     sample(&c, 1, 730); assert(StateMachine_GetStatus()->maxHeightM == 730);
@@ -106,37 +111,28 @@ int main(void)
     StateMachine_Update(&c); assert(c.missionState == CANSAT_STATE_LAUNCH_PAD);
     c.bmp.heightValid = false;
     StateMachine_Update(&c); assert(c.missionState == CANSAT_STATE_LAUNCH_PAD);
-    /* Failed persistence inhibits transition and camera activation. */
+    /* Failed persistence inhibits transition; launch-pad recording stays active. */
     writesLeft = 0;
-    sample(&c, 2001, 100); assert(c.missionState == CANSAT_STATE_LAUNCH_PAD && !dvr);
+    sample(&c, 2001, 100); assert(c.missionState == CANSAT_STATE_LAUNCH_PAD && dvr);
     assert(!StateMachine_GetStatus()->persistenceOK);
     writesLeft = -1;
-    /* Initialization pulse handles tick rollover; repeat requests do not restart. */
-    CameraState camera = {0}; tick = UINT32_MAX - 499U;
-    CameraControl_Start(&camera); tick = 499U; CameraControl_Update(&camera);
-    assert(dvr && !capture && !camera.isRecording);
-    CameraControl_Init(&camera); CameraControl_Start(&camera);
-    tick = 500U; CameraControl_Update(&camera); assert(!dvr && !capture);
-    tick += CAMERA_INIT_DELAY_MS - 1U;
-    CameraControl_Init(&camera); CameraControl_Start(&camera); CameraControl_Update(&camera);
-    assert(!dvr && camera.phase == CAMERA_INIT_WAIT);
-    ++tick; CameraControl_Update(&camera); assert(dvr && capture);
-    tick += CAMERA_START_PULSE_MS - 1U; CameraControl_Update(&camera); assert(capture);
-    ++tick; CameraControl_Update(&camera); assert(!capture && camera.isRecording);
+    /* Startup primes recording then stops; normal start is direct and wrap-safe. */
+    CameraState camera = {0}; tick = 0;
+    CameraControl_Init(&camera);
+    assert(tick == CAMERA_START_PULSE_MS + CAMERA_INIT_RECORD_HOLD_MS + CAMERA_INIT_STOP_SETTLE_MS);
+    assert(!dvr && capture && !camera.isOn && !camera.isRecording && camera.phase == CAMERA_OFF);
+    tick = UINT32_MAX - 499U;
+    CameraControl_Start(&camera);
+    assert(dvr && capture && !camera.isRecording);
+    uint32_t start = camera.lastCaptureHighMs;
+    CameraControl_Start(&camera); assert(camera.lastCaptureHighMs == start);
+    tick = 499U; CameraControl_Update(&camera); assert(capture && !camera.isRecording);
+    tick = 500U; CameraControl_Update(&camera); assert(!capture && camera.isRecording);
+    CameraControl_Start(&camera); assert(camera.isRecording && !capture);
     CameraControl_Stop(&camera); assert(capture && !dvr && !camera.isRecording);
-    for (unsigned phase = 0; phase < 3; ++phase) {
-        camera = (CameraState){0}; tick = 0; CameraControl_Init(&camera);
-        if (phase >= 1) { tick = CAMERA_INIT_PULSE_MS; CameraControl_Update(&camera); }
-        if (phase >= 2) { tick += CAMERA_INIT_DELAY_MS; CameraControl_Update(&camera); }
-        CameraControl_Stop(&camera); tick += 10000; CameraControl_Update(&camera);
-        assert(!dvr && capture && !camera.isRecording && camera.phase == CAMERA_OFF);
-    }
-    /* A late update must still allow the full off interval after switching low. */
-    camera = (CameraState){0}; tick = 0; CameraControl_Init(&camera);
-    tick = 5000; CameraControl_Update(&camera); assert(!dvr);
-    CameraControl_Update(&camera); assert(!dvr);
-    tick += CAMERA_INIT_DELAY_MS; CameraControl_Update(&camera); assert(dvr && capture);
-    CameraControl_Stop(&camera);
+    CameraControl_Start(&camera); CameraControl_Stop(&camera);
+    tick += 10000; CameraControl_Update(&camera);
+    assert(!dvr && capture && camera.phase == CAMERA_OFF);
     /* Reset during deployment repeats the pulse; completion survives reboot. */
     memset(flash, 0xff, sizeof(flash));
     uint32_t ignored;

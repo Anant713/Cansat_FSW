@@ -70,9 +70,11 @@ void BMI270_CancelGyroCalibration(BMI270 *dev) { dev->calibration_state = BMI270
 uint32_t HAL_GetTick(void) { return tick; }
 /* State-machine behavior is covered by its dedicated suite. */
 bool StateMachine_Init(Cansat *cansat) { (void)cansat; return true; }
+void StateMachine_SetCameraReady(bool ready) { (void)ready; }
 void StateMachine_Update(Cansat *cansat) { (void)cansat; }
 void BarometricAltitude_Update(Cansat *cansat) { (void)cansat; }
 void Error_Handler(void) { assert(!"Unexpected Error_Handler"); }
+void CameraControl_Init(CameraState *camera) { assert(camera && !camera->isOn); }
 static bool flightLed;
 static ServoData flightServo;
 bool Switches_Init(void) { flightLed = false; return true; }
