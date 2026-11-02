@@ -25,7 +25,7 @@ set(CMAKE_PROJECT_NAME Documents)
 
 # Select exactly one application entry point and its explicit dependencies.
 set(FIRMWARE_APP "flight" CACHE STRING "Firmware application to build")
-set_property(CACHE FIRMWARE_APP PROPERTY STRINGS flight HDRM_drone_no_commands_test HDRM_drone_test test_telecommands test_acquisition_logging test_acquisition_logging_telemetry test_template test_sd test_sd_text test_spi test_sensors test_gnss test_xbee test_camera test_servos test_switches test_battery)
+set_property(CACHE FIRMWARE_APP PROPERTY STRINGS flight HDRM_drone_no_commands_test HDRM_drone_test test_telecommands test_acquisition_logging test_acquisition_logging_telemetry test_template test_sd test_sd_text test_spi test_sensors test_gnss test_estimation test_navigation test_xbee test_camera test_servos test_switches test_battery)
 
 set_property(CACHE FIRMWARE_APP APPEND PROPERTY STRINGS testHILS testHILS_telemetry_on)
 
@@ -77,6 +77,13 @@ elseif(FIRMWARE_APP STREQUAL "test_sensors")
     set(FIRMWARE_SOURCES Tests/test_sensors.c Core/Src/apps/SensorAcquisition.c)
 elseif(FIRMWARE_APP STREQUAL "test_gnss")
     set(FIRMWARE_SOURCES Tests/test_gnss.c)
+elseif(FIRMWARE_APP STREQUAL "test_estimation")
+    set(FIRMWARE_SOURCES Tests/test_estimation.c Core/Src/apps/Cansat.c
+        Core/Src/apps/SensorAcquisition.c Core/Src/apps/Estimation.c)
+elseif(FIRMWARE_APP STREQUAL "test_navigation")
+    set(FIRMWARE_SOURCES Tests/test_navigation.c Core/Src/apps/Cansat.c
+        Core/Src/apps/SensorAcquisition.c Core/Src/apps/BarometricAltitude.c
+        Core/Src/apps/Estimation.c)
 elseif(FIRMWARE_APP STREQUAL "test_xbee")
     set(FIRMWARE_SOURCES Tests/test_xbee.c)
 elseif(FIRMWARE_APP STREQUAL "test_camera")
@@ -89,7 +96,7 @@ elseif(FIRMWARE_APP STREQUAL "test_battery")
     set(FIRMWARE_SOURCES Tests/test_battery.c)
 else()
     message(FATAL_ERROR
-        "Unknown FIRMWARE_APP '${FIRMWARE_APP}'. Choose flight, HDRM_drone_no_commands_test, HDRM_drone_test, test_telecommands, test_acquisition_logging, test_acquisition_logging_telemetry, test_template, test_sd, test_sd_text, test_spi, test_sensors, test_gnss, test_xbee, test_camera, test_servos, test_switches or test_battery.")
+        "Unknown FIRMWARE_APP '${FIRMWARE_APP}'. Choose flight, HDRM_drone_no_commands_test, HDRM_drone_test, test_telecommands, test_acquisition_logging, test_acquisition_logging_telemetry, test_template, test_sd, test_sd_text, test_spi, test_sensors, test_gnss, test_estimation, test_navigation, test_xbee, test_camera, test_servos, test_switches or test_battery.")
 endif()
 
 # Enable compile command to ease indexing with e.g. clangd
@@ -154,7 +161,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/drivers/XBee.c
 )
 
-if(FIRMWARE_APP STREQUAL "flight" OR FIRMWARE_APP STREQUAL "testHILS" OR FIRMWARE_APP STREQUAL "testHILS_telemetry_on")
+if(FIRMWARE_APP STREQUAL "flight" OR FIRMWARE_APP STREQUAL "testHILS" OR FIRMWARE_APP STREQUAL "testHILS_telemetry_on" OR FIRMWARE_APP STREQUAL "test_estimation" OR FIRMWARE_APP STREQUAL "test_navigation")
     set(DCS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/DCS_Firmware")
     target_sources(${CMAKE_PROJECT_NAME} PRIVATE
         ${DCS_ROOT}/dcs_attitude.c

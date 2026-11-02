@@ -99,6 +99,22 @@
             }
         },
         {
+            "name": "TestEstimation",
+            "inherits": "default",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "FIRMWARE_APP": "test_estimation"
+            }
+        },
+        {
+            "name": "TestNavigation",
+            "inherits": "default",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "FIRMWARE_APP": "test_navigation"
+            }
+        },
+        {
             "name": "TestCamera",
             "inherits": "default",
             "cacheVariables": {
@@ -133,6 +149,14 @@
         {
             "name": "TestGNSS",
             "configurePreset": "TestGNSS"
+        },
+        {
+            "name": "TestEstimation",
+            "configurePreset": "TestEstimation"
+        },
+        {
+            "name": "TestNavigation",
+            "configurePreset": "TestNavigation"
         },
         {
             "name": "TestSensors",

@@ -37,6 +37,8 @@ selected application. Configure and build presets are paired:
 | TestSPI | `Tests/testspi.c` | `build/TestSPI/test_spi.elf` |
 | TestSensors | `Tests/test_sensors.c` | `build/TestSensors/test_sensors.elf` |
 | TestGNSS | `Tests/test_gnss.c` | `build/TestGNSS/test_gnss.elf` |
+| TestEstimation | `Tests/test_estimation.c` | `build/TestEstimation/test_estimation.elf` |
+| TestNavigation | `Tests/test_navigation.c` | `build/TestNavigation/test_navigation.elf` |
 | TestXBee | `Tests/test_xbee.c` | `build/TestXBee/test_xbee.elf` |
 
 `TestSD` creates a new file, writes and appends a binary pattern, remounts, and
@@ -64,6 +66,14 @@ fields print `N/A`. Commands: `status`, `stream on`, `stream off`, `help`.
 See [GNSS setup and APIs](../Docs/GNSS.md).
 Host tests are in `Tests/host/run_gnss_tests.ps1`.
 
+`TestEstimation` runs the flight DCS attitude estimator from live BMI270 and
+IIS2MDC samples. It reports sensor freshness, quaternion validity and norm,
+heading, and heading rate once per second. `TestNavigation` additionally runs
+barometric altitude and GNSS navigation, reporting target-relative north/east
+position, ground velocity, height, propagation state, and target distance.
+Both expose their latest inputs, outputs, initialization flags, and counters as
+debugger variables. Commands: `status`, `stream on`, `stream off`, `help`.
+
 `TestXBee` transmits a fixed 153-byte message and lines entered on the USART3
 serial monitor, and displays incoming XBee bytes there. XBee uses UART4 normal
 TX DMA and circular RX DMA. See [wiring, test commands and driver APIs](../Docs/XBee.md).
@@ -82,6 +92,10 @@ cmake --preset Release
 cmake --build --preset Release
 cmake --preset TestTemplate
 cmake --build --preset TestTemplate
+cmake --preset TestEstimation
+cmake --build --preset TestEstimation
+cmake --preset TestNavigation
+cmake --build --preset TestNavigation
 ```
 
 If your STM32 VS Code environment exposes `cube-cmake` instead of `cmake`, use
